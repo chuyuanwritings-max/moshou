@@ -1,4 +1,4 @@
-// 《墨守》（打龙塔防，暂名）原型 0.1 · 主程序：画面切换、手指、局外（金币 / 弩机 / 机关伙伴）、特效和声音。
+// 《墨守》（打龙塔防，暂名）原型 0.2 · 主程序：画面切换、手指、局外（金币 / 弩机 / 机关伙伴）、特效和声音。
 // 规则在 sim.js，画法在 draw.js，平台差别只在 platform.js。
 const PF = require('./platform.js');
 const C = require('./config.js');
@@ -22,6 +22,7 @@ const ox = (W - F.w * scale) / 2;
 const oy = (H - F.h * scale) / 2;
 
 const G = {
+  fx2: [], // 结算页上面一层的火花
   mode: 'play', // play | end | result
   st: null,
   bg: null,
@@ -50,11 +51,11 @@ const G = {
 };
 
 // —— 声音（同一种声音太密时跳过）——
-function snd(name, gapMs, vol) {
+function snd(name, gapMs, vol, rate) {
   const now = PF.now();
   if (gapMs && G.sndCd[name] && now - G.sndCd[name] < gapMs) return;
   G.sndCd[name] = now;
-  PF.sound(name, vol);
+  PF.sound(name, vol, rate);
 }
 
 // —— 开一局 ——
@@ -70,11 +71,20 @@ function startRun() {
   G.hint = meta.level === 0 && !meta.seenHint;
   G.hintMoved = 0;
   G.runStartReal = PF.now();
+  // 弩机刚升过级：开局在阿铸头上亮一下，箭也换了样子
+  G.bowShow = meta.bowLv > (meta.bowSeen || 0) ? 1.8 : 0;
+  G.palShow = st0Buddy() && meta.palSeen !== meta.buddy ? 1.8 : 0;
+  meta.bowSeen = meta.bowLv;
+  meta.palSeen = meta.buddy;
+  G.goldBump = 0;
   G.timing.restartAt = PF.now();
   meta.runs++;
   saveMeta();
 }
 
+function st0Buddy() {
+  return G.st && G.st.buddy;
+}
 function makeBg(st) {
   const k = scale * dpr;
   const c = PF.createOffscreen(Math.ceil(F.w * k), Math.ceil(F.h * k));
@@ -118,12 +128,38 @@ function endRun(win) {
 }
 
 // —— 特效 ——
+const FXMAX = 420;
+const roomFor = (n) => G.fx.length + n < FXMAX;
 function shards(x, y, n, col) {
   for (let i = 0; i < n; i++) {
     const a = Math.random() * Math.PI * 2;
     const v = 60 + Math.random() * 180;
     G.fx.push({ k: 'sq', x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 60, life: 0.5 + Math.random() * 0.3, max: 0.8, s: 2 + Math.random() * 3, c: col || (Math.random() < 0.5 ? D.P.brass : D.P.brassHi) });
   }
+}
+// 打碎：几片转着飞的铜壳 + 一两个小齿轮
+function chunks(x, y, n, cols) {
+  for (let i = 0; i < n; i++) {
+    const a = -Math.PI / 2 + (Math.random() - 0.5) * 2.6;
+    const v = 120 + Math.random() * 160;
+    G.fx.push({ k: 'chunk', x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, rot: Math.random() * 6, spin: (Math.random() - 0.5) * 24, life: 0.7, max: 0.7, w: 6 + Math.random() * 5, h: 4 + Math.random() * 3, c: cols[i % cols.length] });
+  }
+  for (let i = 0; i < 2; i++) {
+    const a = -Math.PI / 2 + (Math.random() - 0.5) * 2;
+    const v = 90 + Math.random() * 120;
+    G.fx.push({ k: 'gear', x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, rot: 0, spin: (Math.random() < 0.5 ? -1 : 1) * 14, life: 0.8, max: 0.8, r: 3.5 + Math.random() * 2 });
+  }
+}
+// 火花：细长的亮线，往外飞
+function sparks(x, y, n, col, sp) {
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const v = (sp || 1) * (160 + Math.random() * 220);
+    G.fx.push({ k: 'spark', x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 0.18 + Math.random() * 0.12, max: 0.3, c: col || '#fff2b0' });
+  }
+}
+function pop(x, y, r, col, life) {
+  G.fx.push({ k: 'pop', x, y, r, life: life || 0.12, max: life || 0.12, c: col || '#ffffff' });
 }
 function puff(x, y, n, r) {
   for (let i = 0; i < n; i++) {
@@ -133,8 +169,24 @@ function puff(x, y, n, r) {
 function text(x, y, s, size, col, life) {
   G.fx.push({ k: 'txt', x, y, vx: 0, vy: -40, life: life || 0.6, max: life || 0.6, s, size, c: col || '#fff' });
 }
-function ring(x, y, r, col) {
-  G.fx.push({ k: 'ring', x, y, r, life: 0.3, max: 0.3, c: col });
+function ring(x, y, r, col, life, w) {
+  G.fx.push({ k: 'ring', x, y, r, life: life || 0.3, max: life || 0.3, c: col, w: w || 4 });
+}
+// 金币从打碎的地方飞到右上角的金币数
+function coinFly(x, y, delay) {
+  G.fx.push({ k: 'coin', x0: x, y0: y, x, y, life: 0.55 + (delay || 0), max: 0.55 + (delay || 0), d: delay || 0 });
+}
+// 大爆炸：白光 → 橙色火球 → 两圈冲击波 → 焦痕
+function boom(x, y, r, big) {
+  pop(x, y, r * 0.9, '#fff7e0', 0.1);
+  G.fx.push({ k: 'fire', x, y, r, life: 0.35, max: 0.35 });
+  ring(x, y, r, '#ffb347', 0.35, 6);
+  if (big) ring(x, y, r * 1.5, '#fff2b0', 0.45, 3);
+  G.fx.unshift({ k: 'scorch', x, y, r: r * 0.6, life: 1.2, max: 1.2 });
+  if (roomFor(20)) {
+    sparks(x, y, big ? 14 : 8, '#ffb347', big ? 1.3 : 1);
+    chunks(x, y, big ? 5 : 3, [D.P.brass, D.P.brassLo, '#4a4f5c']);
+  }
 }
 
 function handleEvents(st) {
@@ -144,45 +196,112 @@ function handleEvents(st) {
         G.recoil = 1;
         snd('shoot', 70, 0.35);
         break;
-      case 'hit':
+      case 'hit': {
+        const heavy = st.mods.tier >= 4;
         if (e.crit) {
           const now = PF.now();
           if (!G.critTextAt || now - G.critTextAt > 160) {
             G.critTextAt = now;
             text(e.x, e.y - 14, e.dmg + '!', 15, '#fff27a', 0.5);
+            G.fx.push({ k: 'rays', x: e.x, y: e.y, life: 0.2, max: 0.2, r: 18 });
           }
           snd('crit', 60);
         } else {
-          snd('hit', 45, 0.4);
+          snd(heavy ? 'hitHeavy' : 'hit', 45, heavy ? 0.5 : 0.4);
+        }
+        // 打中冒火花：武器越重，火花越多越亮
+        if (roomFor(4)) sparks(e.x, e.y, heavy ? 2 : 1, D.boltTier(st.mods.tier).core, 0.6);
+        break;
+      }
+      case 'kill': {
+        const combo = Math.min(12, e.combo || 1);
+        pop(e.x, e.y, 24, '#ffffff', 0.1);
+        ring(e.x, e.y, 26, D.P.brassHi, 0.25, 3);
+        if (roomFor(16)) {
+          chunks(e.x, e.y, e.chest ? 6 : 4, e.chest ? [D.P.lac, D.P.lacHi, D.P.gold] : e.ram ? ['#6b7080', '#a9afbf', '#3c3f4a'] : [D.P.brass, D.P.brassHi, D.P.brassLo]);
+          sparks(e.x, e.y, 5, '#fff2b0');
+        }
+        coinFly(e.x, e.y);
+        G.shake = Math.max(G.shake, e.front ? 3 : 2);
+        // 连着碎，声音一下比一下高
+        snd('break', 30, 0.6, 1 + (combo - 1) * 0.05);
+        if (e.ram) {
+          boom(e.x, e.y, 54, true);
+          G.hitstop = Math.max(G.hitstop, 0.12);
+          G.shake = Math.max(G.shake, 9);
+          G.flash = 0.25;
+          G.flashColor = '#fff3d0';
+          snd('ram');
+          PF.vibrate(true);
+          for (let k = 1; k < 5; k++) coinFly(e.x + (Math.random() - 0.5) * 30, e.y, k * 0.05);
         }
         break;
-      case 'kill':
-        shards(e.x, e.y, e.chest ? 14 : 8, e.chest ? null : null);
-        puff(e.x, e.y, 2);
-        G.shake = Math.max(G.shake, 1.5);
-        snd('break', 35);
-        break;
+      }
       case 'chest':
-        G.hitstop = Math.max(G.hitstop, 0.08);
-        G.shake = Math.max(G.shake, 3);
+        G.hitstop = Math.max(G.hitstop, 0.09);
+        G.shake = Math.max(G.shake, 4);
         G.fx.push({ k: 'rays', x: e.x, y: e.y, life: 0.5, max: 0.5 });
         shards(e.x, e.y, 10, D.P.gold);
         snd('chest');
         PF.vibrate(false);
         break;
       case 'blast':
-        ring(e.x, e.y, e.r, '#ffa0d8');
-        snd('blast', 80, 0.5);
+        boom(e.x, e.y, e.r, false);
+        G.shake = Math.max(G.shake, 3.5);
+        snd('blast', 80, 0.55);
         break;
+      // —— 伙伴 ——
+      case 'palGo':
+        if (st.buddy.id === 'que') snd('chirp', 100, 0.5);
+        else if (st.buddy.id === 'quan') snd('bark', 100, 0.55);
+        break;
+      case 'peck':
+        snd('peck', 30, 0.5);
+        sparks(e.x, e.y - 6, e.chest ? 4 : 2, e.chest ? D.P.gold : '#fff2b0', 0.7);
+        if (e.chest) pop(e.x, e.y, 14, D.P.gold, 0.08);
+        break;
+      case 'bite':
+        snd('bite');
+        G.fx.push({ k: 'chomp', x: e.x, y: e.y, life: 0.32, max: 0.32 });
+        ring(e.x, e.y, 34, '#ffffff', 0.3, 5);
+        text(e.x, e.y - 30, '退！', 20, D.P.gold, 0.7);
+        G.shake = Math.max(G.shake, 6);
+        G.hitstop = Math.max(G.hitstop, 0.06);
+        PF.vibrate(false);
+        break;
+      case 'mortar':
+        snd('mortar');
+        puff(e.x, e.y, 3, 5);
+        break;
+      case 'shell': {
+        boom(e.x, e.y, e.r, true);
+        G.shake = Math.max(G.shake, 8);
+        G.hitstop = Math.max(G.hitstop, 0.06);
+        snd('boom');
+        PF.vibrate(false);
+        // 留一团蒸汽：龙爬慢
+        for (let k = 0; k < 7; k++) {
+          const a = (k / 7) * Math.PI * 2;
+          G.fx.push({ k: 'cloud', x: e.x + Math.cos(a) * e.r * 0.55, y: e.y + Math.sin(a) * e.r * 0.45, s: 12 + Math.random() * 8, life: st.buddy.slowSec, max: st.buddy.slowSec, ph: Math.random() * 6 });
+        }
+        text(e.x, e.y - e.r * 0.6, '慢！', 18, '#cfe6ff', 0.8);
+        break;
+      }
       case 'combo':
         G.fx.push({ k: 'combo', x: F.w / 2, y: 150, life: 0.9, max: 0.9, s: '×' + e.n + ' 连碎', size: 26 });
         G.shake = Math.max(G.shake, 4);
         G.hitstop = Math.max(G.hitstop, 0.04);
         snd('combo');
         break;
-      case 'pick':
+      case 'pick': {
         snd('pick');
+        const sk = C.SKILLS.find((k) => k.id === e.id);
+        ring(st.px, F.playerY - 14, 40, sk.color, 0.4, 5);
+        pop(st.px, F.playerY - 14, 30, sk.color, 0.15);
+        text(st.px, F.playerY - 60, sk.name + ' +1', 20, sk.color, 0.9);
+        sparks(st.px, F.playerY - 14, 10, sk.color);
         break;
+      }
       case 'lever':
         snd('alarm');
         PF.vibrate(true);
@@ -231,16 +350,31 @@ function stepFx(dt) {
       G.fx.splice(i, 1);
       continue;
     }
-    if (p.k === 'sq') {
-      p.vy += 420 * dt;
+    if (p.k === 'sq' || p.k === 'chunk' || p.k === 'gear') {
+      p.vy += 520 * dt;
       p.x += p.vx * dt;
       p.y += p.vy * dt;
+      if (p.spin) p.rot += p.spin * dt;
+    } else if (p.k === 'spark') {
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vx *= 0.9;
+      p.vy *= 0.9;
+    } else if (p.k === 'coin') {
+      const u = clamp(1 - (p.life - 0) / (p.max - p.d), 0, 1);
+      const e2 = u * u;
+      p.x = p.x0 + (F.w - 64 - p.x0) * e2;
+      p.y = p.y0 + (21 - p.y0) * e2 - Math.sin(u * Math.PI) * 40;
+      if (p.life - dt <= 0) {
+        G.goldBump = 1;
+        snd('coin', 60, 0.12);
+      }
     } else if (p.k === 'puff' || p.k === 'txt') {
       p.x += p.vx * dt;
       p.y += p.vy * dt;
     }
   }
-  if (G.fx.length > 400) G.fx.splice(0, G.fx.length - 400);
+  if (G.fx.length > FXMAX) G.fx.splice(0, G.fx.length - FXMAX);
 }
 
 function drawFx() {
@@ -265,7 +399,7 @@ function drawFx() {
     } else if (p.k === 'ring') {
       ctx.globalAlpha = k;
       ctx.strokeStyle = p.c;
-      ctx.lineWidth = 4 * k + 1;
+      ctx.lineWidth = (p.w || 4) * k + 1;
       ctx.beginPath();
       ctx.arc(p.x, p.y, p.r * (1.2 - k * 0.6), 0, Math.PI * 2);
       ctx.stroke();
@@ -276,7 +410,8 @@ function drawFx() {
       ctx.rotate(G.t * 2);
       ctx.globalAlpha = k;
       ctx.fillStyle = D.P.gold;
-      D.star(ctx, 0, 0, 46 * (1.4 - k * 0.4), 12, 10);
+      const rr = p.r || 46;
+      D.star(ctx, 0, 0, rr * (1.4 - k * 0.4), rr * 0.26, 10);
       ctx.restore();
       ctx.globalAlpha = 1;
     } else if (p.k === 'combo') {
@@ -300,6 +435,100 @@ function drawFx() {
       ctx.beginPath();
       ctx.arc(x, y, 3.5, 0, Math.PI * 2);
       ctx.fill();
+    } else if (p.k === 'chunk') {
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot);
+      ctx.globalAlpha = Math.min(1, k * 2.5);
+      ctx.fillStyle = D.P.line;
+      ctx.fillRect(-p.w / 2 - 1, -p.h / 2 - 1, p.w + 2, p.h + 2);
+      ctx.fillStyle = p.c;
+      ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+      ctx.restore();
+      ctx.globalAlpha = 1;
+    } else if (p.k === 'gear') {
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot);
+      ctx.globalAlpha = Math.min(1, k * 2.5);
+      ctx.fillStyle = D.P.line;
+      D.star(ctx, 0, 0, p.r + 2.5, p.r, 6);
+      ctx.fillStyle = D.P.brassHi;
+      D.star(ctx, 0, 0, p.r + 1.5, p.r - 0.5, 6);
+      ctx.fillStyle = D.P.line;
+      ctx.fillRect(-1, -1, 2, 2);
+      ctx.restore();
+      ctx.globalAlpha = 1;
+    } else if (p.k === 'spark') {
+      ctx.globalAlpha = Math.min(1, k * 1.5);
+      ctx.strokeStyle = p.c;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y);
+      ctx.lineTo(p.x - p.vx * 0.03, p.y - p.vy * 0.03);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    } else if (p.k === 'pop') {
+      ctx.globalAlpha = k * 0.9;
+      ctx.fillStyle = p.c;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r * (1.3 - k * 0.5), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    } else if (p.k === 'fire') {
+      const u = 1 - k;
+      ctx.globalAlpha = k;
+      ctx.fillStyle = '#ff7a2a';
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r * (0.5 + u * 0.6), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#ffd65a';
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r * (0.35 + u * 0.3) * k, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    } else if (p.k === 'scorch') {
+      ctx.globalAlpha = k * 0.45;
+      ctx.fillStyle = '#0d0806';
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    } else if (p.k === 'coin') {
+      if (p.life > p.max - p.d) continue;
+      ctx.fillStyle = D.P.line;
+      ctx.fillRect(p.x - 4, p.y - 4, 8, 8);
+      ctx.fillStyle = D.P.gold;
+      ctx.fillRect(p.x - 3, p.y - 3, 6, 6);
+      ctx.fillStyle = '#fffbe0';
+      ctx.fillRect(p.x - 2, p.y - 2, 2, 2);
+    } else if (p.k === 'cloud') {
+      ctx.globalAlpha = Math.min(1, k * 3) * 0.55;
+      ctx.fillStyle = '#dfe9f5';
+      ctx.beginPath();
+      ctx.arc(p.x + Math.sin(G.t * 2 + p.ph) * 4, p.y + Math.cos(G.t * 1.7 + p.ph) * 3, p.s, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    } else if (p.k === 'chomp') {
+      // 木犬咬下去：上下两排牙合上
+      const u = 1 - k;
+      const close = Math.min(1, u * 3);
+      const gap = 22 * (1 - close);
+      ctx.globalAlpha = Math.min(1, k * 2);
+      for (const d of [-1, 1]) {
+        const y0 = p.y + d * (gap + 6);
+        ctx.fillStyle = D.P.line;
+        ctx.fillRect(p.x - 22, y0 - 5, 44, 10);
+        ctx.fillStyle = '#f4ead8';
+        for (let i = 0; i < 5; i++) {
+          ctx.beginPath();
+          ctx.moveTo(p.x - 20 + i * 9, y0 - d * 3);
+          ctx.lineTo(p.x - 16 + i * 9, y0 - d * 11);
+          ctx.lineTo(p.x - 12 + i * 9, y0 - d * 3);
+          ctx.fill();
+        }
+      }
+      ctx.globalAlpha = 1;
     }
   }
 }
@@ -385,8 +614,13 @@ function drawHud(st) {
   ctx.fillStyle = D.P.red;
   ctx.fillRect(bx - 12, 16, 4, 3);
   // 金币
-  coinIcon(F.w - 64, 21, 8);
-  bigText(ctx, '' + (meta.gold + st.gold), F.w - 50, 21, 15, D.P.gold, D.P.line, 'left');
+  const gb = 1 + (G.goldBump || 0) * 0.35;
+  ctx.save();
+  ctx.translate(F.w - 64, 21);
+  ctx.scale(gb, gb);
+  coinIcon(0, 0, 8);
+  ctx.restore();
+  bigText(ctx, '' + (meta.gold + st.gold), F.w - 50, 21, 15 * (1 + (G.goldBump || 0) * 0.15), D.P.gold, D.P.line, 'left');
   // 已经拿到的技能
   let ix = 14;
   for (const s of C.SKILLS) {
@@ -577,9 +811,10 @@ function drawResult() {
   // 弩机升级
   const cost = C.UPGRADE.cost(meta.bowLv);
   const can = meta.gold >= cost;
-  button('upgrade', F.w / 2 - 110, 516, 220, 46, '升级弩机  ' + cost, { icon: 'coin', size: 17, color: can ? '#8a5a1e' : null, hi: '#c98a2b', disabled: !can || !live });
+  button('upgrade', F.w / 2 - 110, 516, 220, 46, '弩机 Lv.' + meta.bowLv + '→' + (meta.bowLv + 1) + '  ' + cost, { icon: 'coin', size: 16, color: can ? '#8a5a1e' : null, hi: '#c98a2b', disabled: !can || !live, pop: can ? 1 + Math.sin(G.t * 6) * 0.02 : 1 });
   // 带哪只伙伴
-  bigText(ctx, '带谁上城墙', F.w / 2, 590, 13, '#cbb8a8');
+  const cur = C.BUDDIES.find((b) => b.id === meta.buddy);
+  bigText(ctx, cur ? '带' + cur.name + '：' + cur.note : '带谁上城墙', F.w / 2, 590, 13, cur ? D.P.gold : '#cbb8a8');
   C.BUDDIES.forEach((b, i) => {
     const x = F.w / 2 - 84 + i * 84;
     const y = 630;
@@ -614,6 +849,34 @@ function drawResult() {
       bigText(ctx, '第' + (b.unlockLevel + 1) + '关', x, y + 17, 10, '#7a6a60');
     }
   });
+}
+
+// 结算页点了升级：中间弹出一把大弩，放光
+function drawUpgradeShow() {
+  const k = G.upShow / 1.1;
+  const u = 1 - k;
+  const sc = 3.2 * easeOutBack(clamp(u / 0.25, 0, 1));
+  ctx.globalAlpha = Math.min(1, k * 3) * 0.7;
+  ctx.fillStyle = '#0a0605';
+  ctx.fillRect(-50, -50, F.w + 100, F.h + 100);
+  ctx.globalAlpha = 1;
+  ctx.save();
+  ctx.translate(F.w / 2, 300);
+  ctx.globalAlpha = Math.min(1, k * 3);
+  ctx.save();
+  ctx.rotate(G.t * 1.5);
+  ctx.fillStyle = 'rgba(255,214,90,0.3)';
+  D.star(ctx, 0, 0, 110, 36, 14);
+  ctx.restore();
+  ctx.scale(sc, sc);
+  D.drawCrossbow(ctx, 0, 22, 0, G.t, meta.bowLv);
+  ctx.restore();
+  ctx.save();
+  ctx.globalAlpha = Math.min(1, k * 3);
+  bigText(ctx, '弩机 Lv.' + meta.bowLv, F.w / 2, 380, 30, D.P.gold);
+  bigText(ctx, '伤害 +' + Math.round(C.UPGRADE.pct * 100 * meta.bowLv) + '%', F.w / 2, 410, 16, '#fffaf0');
+  ctx.restore();
+  ctx.globalAlpha = 1;
 }
 
 // —— 手指 ——
@@ -686,13 +949,41 @@ function press(id) {
     meta.gold -= cost;
     meta.bowLv++;
     saveMeta();
-    snd('upgrade');
+    snd('upgradeBig');
+    G.upShow = 1.1;
+    G.flash = 0.2;
+    G.flashColor = '#fff3d0';
+    G.shake = 6;
+    for (let k = 0; k < 18; k++) G.fx2.push(mkSpark(F.w / 2, 300));
+    PF.vibrate(true);
   } else if (id.indexOf('buddy_') === 0) {
     const bid = id.slice(6);
     meta.buddy = meta.buddy === bid ? null : bid;
     saveMeta();
     snd('tap');
   }
+}
+function mkSpark(x, y) {
+  const a = Math.random() * Math.PI * 2;
+  const v = 150 + Math.random() * 260;
+  return { x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 0.5 + Math.random() * 0.3, max: 0.8, c: Math.random() < 0.5 ? D.P.gold : '#fff2b0' };
+}
+function drawFx2() {
+  const dt = 1 / 60;
+  for (let i = G.fx2.length - 1; i >= 0; i--) {
+    const p = G.fx2[i];
+    p.life -= dt;
+    if (p.life <= 0) { G.fx2.splice(i, 1); continue; }
+    p.vy += 300 * dt;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    ctx.globalAlpha = Math.min(1, p.life * 2);
+    ctx.fillStyle = D.P.line;
+    ctx.fillRect(p.x - 3, p.y - 3, 6, 6);
+    ctx.fillStyle = p.c;
+    ctx.fillRect(p.x - 2, p.y - 2, 4, 4);
+  }
+  ctx.globalAlpha = 1;
 }
 function setTimeoutSafe(fn, ms) {
   if (typeof setTimeout === 'function') setTimeout(fn, ms);
@@ -749,6 +1040,12 @@ function frame() {
   G.shake = Math.max(0, G.shake - dt * 30);
   G.flash = Math.max(0, G.flash - dt);
   G.banner = Math.max(0, G.banner - dt);
+  if (G.banner <= 0) {
+    G.bowShow = Math.max(0, (G.bowShow || 0) - dt);
+    G.palShow = Math.max(0, (G.palShow || 0) - dt);
+  }
+  G.goldBump = Math.max(0, (G.goldBump || 0) - dt * 5);
+  G.upShow = Math.max(0, (G.upShow || 0) - dt);
 
   render(dt);
   PF.nextFrame(frame);
@@ -781,12 +1078,40 @@ function render() {
     ctx.globalAlpha = 1;
   }
   D.drawDragon(ctx, st, G.t);
+  // 蒸汽龟的蒸汽罩着时：整条龙蒙一层白汽（看得出变慢了）
+  if (st.slowT > 0) {
+    ctx.globalAlpha = Math.min(1, st.slowT) * 0.18;
+    ctx.fillStyle = '#dfe9f5';
+    for (const g of st.segs) if (g.y > -20) { ctx.beginPath(); ctx.arc(g.x, g.y, C.DRAGON.r + 3, 0, Math.PI * 2); ctx.fill(); }
+    ctx.globalAlpha = 1;
+  }
   D.drawBullets(ctx, st);
   // 阿铸 + 伙伴
   const moving = Math.abs(G.targetX - st.px) > 2;
-  if (meta.buddy && st.buddy) D.drawBuddy(ctx, st.buddy.id, st.px + 34, F.playerY + (st.buddy.id === 'que' ? -24 + Math.sin(G.t * 4) * 3 : 14), G.t, 1);
-  D.drawPlayer(ctx, st.px, F.playerY, G.t, G.recoil, moving);
+  if (G.bowShow > 0) {
+    const k = Math.min(1, G.bowShow);
+    ctx.globalAlpha = k * (0.35 + 0.2 * Math.sin(G.t * 10));
+    ctx.fillStyle = D.P.gold;
+    ctx.beginPath();
+    ctx.arc(st.px, F.playerY - 16, 34 + (1.8 - G.bowShow) * 10, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+  D.drawPlayer(ctx, st.px, F.playerY, G.t, G.recoil, moving, st.bowLv);
+  D.drawPal(ctx, st, G.t);
+  D.drawShells(ctx, st, G.t);
   drawFx();
+  if (G.bowShow > 0 && G.mode === 'play') {
+    ctx.globalAlpha = Math.min(1, G.bowShow * 2);
+    bigText(ctx, '弩机 Lv.' + st.bowLv, st.px, F.playerY - 74 - (1.8 - G.bowShow) * 8, 18, D.P.gold);
+    ctx.globalAlpha = 1;
+  }
+  if (G.palShow > 0 && G.mode === 'play' && st.pal) {
+    ctx.globalAlpha = Math.min(1, G.palShow * 2);
+    bigText(ctx, st.buddy.name + ' 上城墙！', F.w / 2, 380, 22, '#fffaf0');
+    bigText(ctx, st.buddy.note, F.w / 2, 406, 14, D.P.gold);
+    ctx.globalAlpha = 1;
+  }
   // 危险时屏幕四周发红
   if (st.danger > 0 && G.mode === 'play') {
     const a = st.danger * 0.35 * (0.6 + 0.4 * Math.sin(G.t * 12));
@@ -812,6 +1137,8 @@ function render() {
   if (G.mode === 'play' && st.mode === 'play' && st.lever.offer > 0) drawLever(st);
   if (G.mode === 'play' && st.mode === 'cards') drawCards(st);
   if (G.mode === 'result') drawResult();
+  if (G.mode === 'result' && G.upShow > 0) drawUpgradeShow();
+  if (G.mode === 'result') drawFx2();
   // 静音键
   if (G.mode !== 'result') {
     ctx.globalAlpha = 0.6;

@@ -71,7 +71,7 @@ const BOW = {
 const LEVELS = [
   // 数值由 test/measure.js 模拟玩家连玩 15 局调出来（2026-11-19）：第 1 关发呆也能过；第 2 关第一次普通玩家赢四成
   { rows: 4, n: 24, hp: 70, growth: 1.2, chests: 5, v: 6.8, accel: 0.004 },
-  { rows: 5, n: 40, hp: 265, growth: 4.0, chests: 6, v: 7.7, accel: 0.004 },
+  { rows: 5, n: 40, hp: 300, growth: 4.0, chests: 6, v: 7.7, accel: 0.004 },
   { rows: 5, n: 46, hp: 240, growth: 4.5, chests: 7, v: 8.2, accel: 0.0045 },
   { rows: 5, n: 52, hp: 245, growth: 5.0, chests: 7, v: 8.7, accel: 0.005 },
   { rows: 6, n: 58, hp: 295, growth: 5.5, chests: 8, v: 8.7, accel: 0.005 },
@@ -96,11 +96,18 @@ const SKILLS = [
   { id: 'crit', name: '会心', max: 3, color: '#fff27a' },
 ];
 
-// 机关伙伴：带一只上城墙。prefer = 这只让哪个技能出得更勤（权重 ×4），而且这个技能变得更强
+// 机关伙伴：带一只上城墙，三只的打法完全不一样（2026-11-19 0.2：Cc 说看不出区别，改成各自动手）
+// 三只强度调到差不多（test/measure.js + 分关对比），区别在打法不在强弱。伤害都按「弩机一箭」的倍数算，所以升级弩机伙伴也跟着变强。prefer = 三选一里这张卡出得更勤
 const BUDDIES = [
-  { id: 'que', name: '铜雀', prefer: 'multi', unlockLevel: 0, note: '多发每级多两箭' },
-  { id: 'quan', name: '木犬', prefer: 'bounce', unlockLevel: 1, note: '弹过墙的箭伤害翻倍' },
-  { id: 'gui', name: '蒸汽龟', prefer: 'blast', unlockLevel: 3, note: '一开局就会炸开，炸得更大' },
+  // 铜雀：飞出去啄，专挑机关匣（没有匣子就啄最硬的那节）→ 匣子开得快，技能来得多
+  { id: 'que', name: '铜雀', prefer: 'multi', unlockLevel: 0, note: '飞去啄机关匣，技能来得快',
+    cd: 2.0, pecks: 5, peckDmg: 3.0, chestMul: 1.3, fly: 520 },
+  // 木犬：扑上龙头咬一大口，整条龙往后退 → 救急
+  { id: 'quan', name: '木犬', prefer: 'bounce', unlockLevel: 1, note: '扑咬龙头，整条龙往后退',
+    cd: 3.2, biteDmg: 34, push: 0.45 },
+  // 蒸汽龟：往龙最密的地方抛炮弹，炸一大片，留一团蒸汽让龙变慢 → 清场
+  { id: 'gui', name: '蒸汽龟', prefer: 'blast', unlockLevel: 3, note: '抛炮弹炸一片，蒸汽让龙变慢',
+    cd: 3.5, shellDmg: 4.4, shellR: 62, flight: 0.7, slow: 0.75, slowSec: 1.2 },
 ];
 
 // 弩机升级（金币买）：每级伤害 +12%
@@ -182,9 +189,30 @@ const AZHU_PAL = {
   V: '#6b3f22', v: '#45280f', B: '#2a1a10', b: P.brassHi, P: '#3a3346', p: '#262033', O: '#1e1410',
 };
 
-function drawCrossbow(ctx, x, y, recoil, t) {
+function drawCrossbow(ctx, x, y, recoil, t, lv) {
+  lv = lv || 0;
   // 弩身（竖着朝上）
   const yy = y - recoil * 4;
+  const arm = 17 + Math.min(5, lv) * 1.2; // 升级：弓臂越来越长
+  // 5 级以上：炉心发红光
+  if (lv >= 5) {
+    ctx.globalAlpha = 0.25 + 0.15 * Math.sin(t * 8);
+    ctx.fillStyle = lv >= 8 ? '#ff5a3a' : '#ffb347';
+    ctx.beginPath();
+    ctx.arc(x, yy - 16, 20, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+  // 3 级以上：两边多挂两个蒸汽罐
+  if (lv >= 3) {
+    for (const d of [-1, 1]) {
+      ctx.fillStyle = P.line;
+      roundRect(ctx, x + d * 11 - 4, yy - 14, 8, 11, 2);
+      ctx.fill();
+      ctx.fillStyle = lv >= 6 ? P.gold : P.brassLo;
+      ctx.fillRect(x + d * 11 - 2.5, yy - 12.5, 5, 8);
+    }
+  }
   ctx.fillStyle = P.line;
   ctx.fillRect(x - 4, yy - 30, 8, 30);
   ctx.fillStyle = P.brass;
@@ -206,26 +234,34 @@ function drawCrossbow(ctx, x, y, recoil, t) {
   ctx.lineWidth = 5;
   ctx.lineCap = 'round';
   ctx.beginPath();
-  ctx.moveTo(x - 17, yy - 22);
-  ctx.quadraticCurveTo(x, yy - 34 + recoil * 2, x + 17, yy - 22);
+  ctx.moveTo(x - arm, yy - 22);
+  ctx.quadraticCurveTo(x, yy - 34 + recoil * 2, x + arm, yy - 22);
   ctx.stroke();
-  ctx.strokeStyle = P.brassHi;
+  ctx.strokeStyle = lv >= 6 ? '#fff2b0' : lv >= 1 ? P.gold : P.brassHi;
   ctx.lineWidth = 2.2;
   ctx.stroke();
   // 弦
   ctx.strokeStyle = '#efe0c0';
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(x - 16, yy - 22);
+  ctx.moveTo(x - arm + 1, yy - 22);
   ctx.lineTo(x, yy - 20 + recoil * 3);
-  ctx.lineTo(x + 16, yy - 22);
+  ctx.lineTo(x + arm - 1, yy - 22);
   ctx.stroke();
   // 箭头那点亮光
   ctx.fillStyle = '#fff2b0';
   ctx.fillRect(x - 1.5, yy - 34, 3, 4);
+  // 刚放完箭：枪口一团火光
+  if (recoil > 0.55) {
+    const k = (recoil - 0.55) / 0.45;
+    ctx.globalAlpha = k;
+    ctx.fillStyle = '#fff2b0';
+    star(ctx, x, yy - 36, 7 + lv * 0.6, 3, 6);
+    ctx.globalAlpha = 1;
+  }
 }
 
-function drawPlayer(ctx, x, y, t, recoil, moving) {
+function drawPlayer(ctx, x, y, t, recoil, moving, lv) {
   const bob = moving ? Math.sin(t * 22) * 1.2 : Math.sin(t * 3) * 0.6;
   // 影子
   ctx.fillStyle = 'rgba(0,0,0,0.35)';
@@ -238,7 +274,7 @@ function drawPlayer(ctx, x, y, t, recoil, moving) {
   ctx.restore();
   const u = 3;
   pix(ctx, AZHU, AZHU_PAL, x - 8 * u, y - 30 + bob, u);
-  drawCrossbow(ctx, x, y - 26 + bob, recoil, t);
+  drawCrossbow(ctx, x, y - 26 + bob, recoil, t, lv);
 }
 
 // —— 机关伙伴（8 比特小图，跟在阿铸身边；收藏要好看）——
@@ -288,7 +324,7 @@ const BUDDY_PAL = {
   gui: { L: P.line, g: '#5f8a4a', G: '#8cc06a', d: '#3e5e30', s: '#d9b28a', E: P.line, c: P.brass, h: P.brassHi },
 };
 
-function drawBuddy(ctx, id, x, y, t, s) {
+function drawBuddy(ctx, id, x, y, t, s, flip) {
   const map = BUDDY_PIX[id];
   if (!map) return;
   const u = 2 * (s || 1);
@@ -297,7 +333,13 @@ function drawBuddy(ctx, id, x, y, t, s) {
   let bob = 0;
   if (id === 'que') bob = Math.sin(t * 9) * 2 * (s || 1);
   else if (id === 'quan') bob = Math.abs(Math.sin(t * 8)) * -1.5 * (s || 1);
-  pix(ctx, map, BUDDY_PAL[id], x - w / 2, y - h / 2 + bob, u);
+  if (flip) {
+    ctx.save();
+    ctx.translate(x, 0);
+    ctx.scale(-1, 1);
+    pix(ctx, map, BUDDY_PAL[id], -w / 2, y - h / 2 + bob, u);
+    ctx.restore();
+  } else pix(ctx, map, BUDDY_PAL[id], x - w / 2, y - h / 2 + bob, u);
   if (id === 'gui' && Math.sin(t * 4) > 0.2) {
     ctx.fillStyle = 'rgba(239,230,220,0.75)';
     ctx.beginPath();
@@ -597,8 +639,10 @@ function fmtHp(v) {
 function drawSeg(ctx, g, t, isTail) {
   const R = C.DRAGON.r;
   const wob = Math.sin(t * 6 + g.id * 0.9) * 0.8;
+  const pop = 1 + Math.max(0, g.flash) * 2.2; // 打中那一下鼓一下
   ctx.save();
   ctx.translate(g.x, g.y + wob);
+  ctx.scale(pop, pop);
   if (g.chest) {
     // 机关匣：朱漆方匣 + 金箍 + 齿轮
     ctx.rotate(g.a || 0);
@@ -772,27 +816,127 @@ function drawDragon(ctx, st, t) {
   if (segs.length && segs[0].y > -30) drawHead(ctx, segs[0], t, st.danger);
 }
 
+// 箭的样子跟着武器「多重」变：黄铜 → 银蓝 → 金光 → 红热带火尾
+const BOLT = [
+  { core: P.brassHi, tip: '#fff6c8', len: 12, w: 2.4, trail: 0 },
+  { core: '#cfe6ff', tip: '#ffffff', len: 14, w: 2.8, trail: 18, tc: '120,190,255' },
+  { core: P.gold, tip: '#fffbe0', len: 16, w: 3.2, trail: 26, tc: '255,214,90', glow: 'rgba(255,214,90,0.35)' },
+  { core: '#ff7a3a', tip: '#fff0b0', len: 18, w: 3.6, trail: 34, tc: '255,110,50', glow: 'rgba(255,100,40,0.4)' },
+];
+function boltTier(tier) {
+  return BOLT[tier >= 7 ? 3 : tier >= 4 ? 2 : tier >= 2 ? 1 : 0];
+}
 function drawBullets(ctx, st) {
+  const B = boltTier(st.mods.tier || 0);
   for (const u of st.bullets) {
     const a = Math.atan2(u.vy, u.vx);
     ctx.save();
     ctx.translate(u.x, u.y);
     ctx.rotate(a);
+    if (B.trail) {
+      ctx.fillStyle = 'rgba(' + B.tc + ',0.35)';
+      ctx.fillRect(-B.len - B.trail, -B.w / 2, B.trail, B.w);
+    }
+    if (B.glow) {
+      ctx.fillStyle = B.glow;
+      ctx.fillRect(-B.len, -B.w * 1.5, B.len + 8, B.w * 3);
+    }
     ctx.fillStyle = P.line;
-    ctx.fillRect(-9, -2.5, 15, 5);
-    ctx.fillStyle = u.bounced ? '#7dff9a' : P.brassHi;
-    ctx.fillRect(-8, -1.2, 12, 2.4);
-    ctx.fillStyle = '#fff6c8';
-    ctx.fillRect(3, -2, 4, 4);
+    ctx.fillRect(-B.len + 3, -B.w / 2 - 1.2, B.len + 3, B.w + 2.4);
+    ctx.fillStyle = u.bounced ? '#7dff9a' : B.core;
+    ctx.fillRect(-B.len + 4, -B.w / 2, B.len, B.w);
+    ctx.fillStyle = B.tip;
+    ctx.fillRect(3, -B.w / 2 - 0.6, 4, B.w + 1.2);
     ctx.restore();
   }
 }
 
-module.exports = { P, pix, drawPlayer, drawBuddy, drawIcon, drawBackground, drawDragon, drawBullets, star, fmtHp, bigText, clamp };
+// 伙伴在场上：跟着 st.pal 的位置和状态画
+function drawPal(ctx, st, t) {
+  const p = st.pal;
+  if (!p) return;
+  const b = st.buddy;
+  // 冷却圈：待命时脚下一圈慢慢填满，满了就出手
+  if (p.state === 'home' && b.cd) {
+    const k = clamp(1 - p.cd / b.cd, 0, 1);
+    ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y + 14, 9, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = k >= 1 ? '#ffffff' : P.gold;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y + 14, 9, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * k);
+    ctx.stroke();
+  }
+  if (b.id === 'que') {
+    const flying = p.state !== 'home';
+    if (flying) {
+      // 金色尾迹
+      ctx.fillStyle = 'rgba(255,214,90,0.35)';
+      ctx.beginPath();
+      ctx.arc(p.x - (p.fx || 0) * 10, p.y + 4, 6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    const dip = p.state === 'peck' ? (p.t > 0.04 ? 4 : 0) : 0;
+    if (flying) {
+      ctx.fillStyle = 'rgba(255,240,190,0.35)';
+      ctx.beginPath();
+      ctx.arc(p.x, p.y + dip, 17, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    drawBuddy(ctx, 'que', p.x, p.y + dip, t * (flying ? 2.5 : 1), flying ? 1.8 : 1.4, (p.fx || 0) < 0);
+  } else if (b.id === 'quan') {
+    const air = p.state !== 'home';
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    if (air) ctx.rotate((p.fx || 1) * (p.state === 'leap' ? -0.5 : 0.4));
+    drawBuddy(ctx, 'quan', 0, 0, air ? 0 : t, 1.4, (p.fx || 1) < 0);
+    ctx.restore();
+  } else if (b.id === 'gui') {
+    const r = Math.max(0, p.recoil || 0) / 0.25;
+    ctx.save();
+    ctx.translate(p.x, p.y + r * 3);
+    ctx.scale(1 + r * 0.15, 1 - r * 0.15);
+    drawBuddy(ctx, 'gui', 0, 0, t, 1.4, true);
+    ctx.restore();
+  }
+}
+
+// 蒸汽龟的炮弹：高高的抛物线，落点先亮一个红圈（看得见要炸哪）
+function drawShells(ctx, st) {
+  for (const sh of st.shells) {
+    const u = sh.t / sh.T;
+    const R = st.buddy ? st.buddy.shellR : 60;
+    ctx.globalAlpha = 0.3 + 0.4 * u;
+    ctx.strokeStyle = P.red;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([5, 4]);
+    ctx.beginPath();
+    ctx.arc(sh.tx, sh.ty, R * (1.25 - 0.25 * u), 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
+    const x = sh.x0 + (sh.tx - sh.x0) * u;
+    const y = sh.y0 + (sh.ty - sh.y0) * u - Math.sin(u * Math.PI) * 160;
+    ctx.fillStyle = P.line;
+    ctx.beginPath();
+    ctx.arc(x, y, 8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#4a4f5c';
+    ctx.beginPath();
+    ctx.arc(x, y, 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#ff9a3c';
+    ctx.fillRect(x - 1.5, y - 9, 3, 3 + Math.sin(sh.t * 40) * 1.5);
+  }
+}
+
+module.exports = { P, pix, drawPlayer, drawCrossbow, drawBuddy, drawPal, drawShells, boltTier, drawIcon, drawBackground, drawDragon, drawBullets, star, fmtHp, bigText, clamp };
 
 });
 __def("js/main.js", function (module, exports, require) {
-// 《墨守》（打龙塔防，暂名）原型 0.1 · 主程序：画面切换、手指、局外（金币 / 弩机 / 机关伙伴）、特效和声音。
+// 《墨守》（打龙塔防，暂名）原型 0.2 · 主程序：画面切换、手指、局外（金币 / 弩机 / 机关伙伴）、特效和声音。
 // 规则在 sim.js，画法在 draw.js，平台差别只在 platform.js。
 const PF = require('./platform.js');
 const C = require('./config.js');
@@ -816,6 +960,7 @@ const ox = (W - F.w * scale) / 2;
 const oy = (H - F.h * scale) / 2;
 
 const G = {
+  fx2: [], // 结算页上面一层的火花
   mode: 'play', // play | end | result
   st: null,
   bg: null,
@@ -844,11 +989,11 @@ const G = {
 };
 
 // —— 声音（同一种声音太密时跳过）——
-function snd(name, gapMs, vol) {
+function snd(name, gapMs, vol, rate) {
   const now = PF.now();
   if (gapMs && G.sndCd[name] && now - G.sndCd[name] < gapMs) return;
   G.sndCd[name] = now;
-  PF.sound(name, vol);
+  PF.sound(name, vol, rate);
 }
 
 // —— 开一局 ——
@@ -864,11 +1009,20 @@ function startRun() {
   G.hint = meta.level === 0 && !meta.seenHint;
   G.hintMoved = 0;
   G.runStartReal = PF.now();
+  // 弩机刚升过级：开局在阿铸头上亮一下，箭也换了样子
+  G.bowShow = meta.bowLv > (meta.bowSeen || 0) ? 1.8 : 0;
+  G.palShow = st0Buddy() && meta.palSeen !== meta.buddy ? 1.8 : 0;
+  meta.bowSeen = meta.bowLv;
+  meta.palSeen = meta.buddy;
+  G.goldBump = 0;
   G.timing.restartAt = PF.now();
   meta.runs++;
   saveMeta();
 }
 
+function st0Buddy() {
+  return G.st && G.st.buddy;
+}
 function makeBg(st) {
   const k = scale * dpr;
   const c = PF.createOffscreen(Math.ceil(F.w * k), Math.ceil(F.h * k));
@@ -912,12 +1066,38 @@ function endRun(win) {
 }
 
 // —— 特效 ——
+const FXMAX = 420;
+const roomFor = (n) => G.fx.length + n < FXMAX;
 function shards(x, y, n, col) {
   for (let i = 0; i < n; i++) {
     const a = Math.random() * Math.PI * 2;
     const v = 60 + Math.random() * 180;
     G.fx.push({ k: 'sq', x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 60, life: 0.5 + Math.random() * 0.3, max: 0.8, s: 2 + Math.random() * 3, c: col || (Math.random() < 0.5 ? D.P.brass : D.P.brassHi) });
   }
+}
+// 打碎：几片转着飞的铜壳 + 一两个小齿轮
+function chunks(x, y, n, cols) {
+  for (let i = 0; i < n; i++) {
+    const a = -Math.PI / 2 + (Math.random() - 0.5) * 2.6;
+    const v = 120 + Math.random() * 160;
+    G.fx.push({ k: 'chunk', x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, rot: Math.random() * 6, spin: (Math.random() - 0.5) * 24, life: 0.7, max: 0.7, w: 6 + Math.random() * 5, h: 4 + Math.random() * 3, c: cols[i % cols.length] });
+  }
+  for (let i = 0; i < 2; i++) {
+    const a = -Math.PI / 2 + (Math.random() - 0.5) * 2;
+    const v = 90 + Math.random() * 120;
+    G.fx.push({ k: 'gear', x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, rot: 0, spin: (Math.random() < 0.5 ? -1 : 1) * 14, life: 0.8, max: 0.8, r: 3.5 + Math.random() * 2 });
+  }
+}
+// 火花：细长的亮线，往外飞
+function sparks(x, y, n, col, sp) {
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const v = (sp || 1) * (160 + Math.random() * 220);
+    G.fx.push({ k: 'spark', x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 0.18 + Math.random() * 0.12, max: 0.3, c: col || '#fff2b0' });
+  }
+}
+function pop(x, y, r, col, life) {
+  G.fx.push({ k: 'pop', x, y, r, life: life || 0.12, max: life || 0.12, c: col || '#ffffff' });
 }
 function puff(x, y, n, r) {
   for (let i = 0; i < n; i++) {
@@ -927,8 +1107,24 @@ function puff(x, y, n, r) {
 function text(x, y, s, size, col, life) {
   G.fx.push({ k: 'txt', x, y, vx: 0, vy: -40, life: life || 0.6, max: life || 0.6, s, size, c: col || '#fff' });
 }
-function ring(x, y, r, col) {
-  G.fx.push({ k: 'ring', x, y, r, life: 0.3, max: 0.3, c: col });
+function ring(x, y, r, col, life, w) {
+  G.fx.push({ k: 'ring', x, y, r, life: life || 0.3, max: life || 0.3, c: col, w: w || 4 });
+}
+// 金币从打碎的地方飞到右上角的金币数
+function coinFly(x, y, delay) {
+  G.fx.push({ k: 'coin', x0: x, y0: y, x, y, life: 0.55 + (delay || 0), max: 0.55 + (delay || 0), d: delay || 0 });
+}
+// 大爆炸：白光 → 橙色火球 → 两圈冲击波 → 焦痕
+function boom(x, y, r, big) {
+  pop(x, y, r * 0.9, '#fff7e0', 0.1);
+  G.fx.push({ k: 'fire', x, y, r, life: 0.35, max: 0.35 });
+  ring(x, y, r, '#ffb347', 0.35, 6);
+  if (big) ring(x, y, r * 1.5, '#fff2b0', 0.45, 3);
+  G.fx.unshift({ k: 'scorch', x, y, r: r * 0.6, life: 1.2, max: 1.2 });
+  if (roomFor(20)) {
+    sparks(x, y, big ? 14 : 8, '#ffb347', big ? 1.3 : 1);
+    chunks(x, y, big ? 5 : 3, [D.P.brass, D.P.brassLo, '#4a4f5c']);
+  }
 }
 
 function handleEvents(st) {
@@ -938,45 +1134,112 @@ function handleEvents(st) {
         G.recoil = 1;
         snd('shoot', 70, 0.35);
         break;
-      case 'hit':
+      case 'hit': {
+        const heavy = st.mods.tier >= 4;
         if (e.crit) {
           const now = PF.now();
           if (!G.critTextAt || now - G.critTextAt > 160) {
             G.critTextAt = now;
             text(e.x, e.y - 14, e.dmg + '!', 15, '#fff27a', 0.5);
+            G.fx.push({ k: 'rays', x: e.x, y: e.y, life: 0.2, max: 0.2, r: 18 });
           }
           snd('crit', 60);
         } else {
-          snd('hit', 45, 0.4);
+          snd(heavy ? 'hitHeavy' : 'hit', 45, heavy ? 0.5 : 0.4);
+        }
+        // 打中冒火花：武器越重，火花越多越亮
+        if (roomFor(4)) sparks(e.x, e.y, heavy ? 2 : 1, D.boltTier(st.mods.tier).core, 0.6);
+        break;
+      }
+      case 'kill': {
+        const combo = Math.min(12, e.combo || 1);
+        pop(e.x, e.y, 24, '#ffffff', 0.1);
+        ring(e.x, e.y, 26, D.P.brassHi, 0.25, 3);
+        if (roomFor(16)) {
+          chunks(e.x, e.y, e.chest ? 6 : 4, e.chest ? [D.P.lac, D.P.lacHi, D.P.gold] : e.ram ? ['#6b7080', '#a9afbf', '#3c3f4a'] : [D.P.brass, D.P.brassHi, D.P.brassLo]);
+          sparks(e.x, e.y, 5, '#fff2b0');
+        }
+        coinFly(e.x, e.y);
+        G.shake = Math.max(G.shake, e.front ? 3 : 2);
+        // 连着碎，声音一下比一下高
+        snd('break', 30, 0.6, 1 + (combo - 1) * 0.05);
+        if (e.ram) {
+          boom(e.x, e.y, 54, true);
+          G.hitstop = Math.max(G.hitstop, 0.12);
+          G.shake = Math.max(G.shake, 9);
+          G.flash = 0.25;
+          G.flashColor = '#fff3d0';
+          snd('ram');
+          PF.vibrate(true);
+          for (let k = 1; k < 5; k++) coinFly(e.x + (Math.random() - 0.5) * 30, e.y, k * 0.05);
         }
         break;
-      case 'kill':
-        shards(e.x, e.y, e.chest ? 14 : 8, e.chest ? null : null);
-        puff(e.x, e.y, 2);
-        G.shake = Math.max(G.shake, 1.5);
-        snd('break', 35);
-        break;
+      }
       case 'chest':
-        G.hitstop = Math.max(G.hitstop, 0.08);
-        G.shake = Math.max(G.shake, 3);
+        G.hitstop = Math.max(G.hitstop, 0.09);
+        G.shake = Math.max(G.shake, 4);
         G.fx.push({ k: 'rays', x: e.x, y: e.y, life: 0.5, max: 0.5 });
         shards(e.x, e.y, 10, D.P.gold);
         snd('chest');
         PF.vibrate(false);
         break;
       case 'blast':
-        ring(e.x, e.y, e.r, '#ffa0d8');
-        snd('blast', 80, 0.5);
+        boom(e.x, e.y, e.r, false);
+        G.shake = Math.max(G.shake, 3.5);
+        snd('blast', 80, 0.55);
         break;
+      // —— 伙伴 ——
+      case 'palGo':
+        if (st.buddy.id === 'que') snd('chirp', 100, 0.5);
+        else if (st.buddy.id === 'quan') snd('bark', 100, 0.55);
+        break;
+      case 'peck':
+        snd('peck', 30, 0.5);
+        sparks(e.x, e.y - 6, e.chest ? 4 : 2, e.chest ? D.P.gold : '#fff2b0', 0.7);
+        if (e.chest) pop(e.x, e.y, 14, D.P.gold, 0.08);
+        break;
+      case 'bite':
+        snd('bite');
+        G.fx.push({ k: 'chomp', x: e.x, y: e.y, life: 0.32, max: 0.32 });
+        ring(e.x, e.y, 34, '#ffffff', 0.3, 5);
+        text(e.x, e.y - 30, '退！', 20, D.P.gold, 0.7);
+        G.shake = Math.max(G.shake, 6);
+        G.hitstop = Math.max(G.hitstop, 0.06);
+        PF.vibrate(false);
+        break;
+      case 'mortar':
+        snd('mortar');
+        puff(e.x, e.y, 3, 5);
+        break;
+      case 'shell': {
+        boom(e.x, e.y, e.r, true);
+        G.shake = Math.max(G.shake, 8);
+        G.hitstop = Math.max(G.hitstop, 0.06);
+        snd('boom');
+        PF.vibrate(false);
+        // 留一团蒸汽：龙爬慢
+        for (let k = 0; k < 7; k++) {
+          const a = (k / 7) * Math.PI * 2;
+          G.fx.push({ k: 'cloud', x: e.x + Math.cos(a) * e.r * 0.55, y: e.y + Math.sin(a) * e.r * 0.45, s: 12 + Math.random() * 8, life: st.buddy.slowSec, max: st.buddy.slowSec, ph: Math.random() * 6 });
+        }
+        text(e.x, e.y - e.r * 0.6, '慢！', 18, '#cfe6ff', 0.8);
+        break;
+      }
       case 'combo':
         G.fx.push({ k: 'combo', x: F.w / 2, y: 150, life: 0.9, max: 0.9, s: '×' + e.n + ' 连碎', size: 26 });
         G.shake = Math.max(G.shake, 4);
         G.hitstop = Math.max(G.hitstop, 0.04);
         snd('combo');
         break;
-      case 'pick':
+      case 'pick': {
         snd('pick');
+        const sk = C.SKILLS.find((k) => k.id === e.id);
+        ring(st.px, F.playerY - 14, 40, sk.color, 0.4, 5);
+        pop(st.px, F.playerY - 14, 30, sk.color, 0.15);
+        text(st.px, F.playerY - 60, sk.name + ' +1', 20, sk.color, 0.9);
+        sparks(st.px, F.playerY - 14, 10, sk.color);
         break;
+      }
       case 'lever':
         snd('alarm');
         PF.vibrate(true);
@@ -1025,16 +1288,31 @@ function stepFx(dt) {
       G.fx.splice(i, 1);
       continue;
     }
-    if (p.k === 'sq') {
-      p.vy += 420 * dt;
+    if (p.k === 'sq' || p.k === 'chunk' || p.k === 'gear') {
+      p.vy += 520 * dt;
       p.x += p.vx * dt;
       p.y += p.vy * dt;
+      if (p.spin) p.rot += p.spin * dt;
+    } else if (p.k === 'spark') {
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vx *= 0.9;
+      p.vy *= 0.9;
+    } else if (p.k === 'coin') {
+      const u = clamp(1 - (p.life - 0) / (p.max - p.d), 0, 1);
+      const e2 = u * u;
+      p.x = p.x0 + (F.w - 64 - p.x0) * e2;
+      p.y = p.y0 + (21 - p.y0) * e2 - Math.sin(u * Math.PI) * 40;
+      if (p.life - dt <= 0) {
+        G.goldBump = 1;
+        snd('coin', 60, 0.12);
+      }
     } else if (p.k === 'puff' || p.k === 'txt') {
       p.x += p.vx * dt;
       p.y += p.vy * dt;
     }
   }
-  if (G.fx.length > 400) G.fx.splice(0, G.fx.length - 400);
+  if (G.fx.length > FXMAX) G.fx.splice(0, G.fx.length - FXMAX);
 }
 
 function drawFx() {
@@ -1059,7 +1337,7 @@ function drawFx() {
     } else if (p.k === 'ring') {
       ctx.globalAlpha = k;
       ctx.strokeStyle = p.c;
-      ctx.lineWidth = 4 * k + 1;
+      ctx.lineWidth = (p.w || 4) * k + 1;
       ctx.beginPath();
       ctx.arc(p.x, p.y, p.r * (1.2 - k * 0.6), 0, Math.PI * 2);
       ctx.stroke();
@@ -1070,7 +1348,8 @@ function drawFx() {
       ctx.rotate(G.t * 2);
       ctx.globalAlpha = k;
       ctx.fillStyle = D.P.gold;
-      D.star(ctx, 0, 0, 46 * (1.4 - k * 0.4), 12, 10);
+      const rr = p.r || 46;
+      D.star(ctx, 0, 0, rr * (1.4 - k * 0.4), rr * 0.26, 10);
       ctx.restore();
       ctx.globalAlpha = 1;
     } else if (p.k === 'combo') {
@@ -1094,6 +1373,100 @@ function drawFx() {
       ctx.beginPath();
       ctx.arc(x, y, 3.5, 0, Math.PI * 2);
       ctx.fill();
+    } else if (p.k === 'chunk') {
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot);
+      ctx.globalAlpha = Math.min(1, k * 2.5);
+      ctx.fillStyle = D.P.line;
+      ctx.fillRect(-p.w / 2 - 1, -p.h / 2 - 1, p.w + 2, p.h + 2);
+      ctx.fillStyle = p.c;
+      ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+      ctx.restore();
+      ctx.globalAlpha = 1;
+    } else if (p.k === 'gear') {
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot);
+      ctx.globalAlpha = Math.min(1, k * 2.5);
+      ctx.fillStyle = D.P.line;
+      D.star(ctx, 0, 0, p.r + 2.5, p.r, 6);
+      ctx.fillStyle = D.P.brassHi;
+      D.star(ctx, 0, 0, p.r + 1.5, p.r - 0.5, 6);
+      ctx.fillStyle = D.P.line;
+      ctx.fillRect(-1, -1, 2, 2);
+      ctx.restore();
+      ctx.globalAlpha = 1;
+    } else if (p.k === 'spark') {
+      ctx.globalAlpha = Math.min(1, k * 1.5);
+      ctx.strokeStyle = p.c;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y);
+      ctx.lineTo(p.x - p.vx * 0.03, p.y - p.vy * 0.03);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    } else if (p.k === 'pop') {
+      ctx.globalAlpha = k * 0.9;
+      ctx.fillStyle = p.c;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r * (1.3 - k * 0.5), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    } else if (p.k === 'fire') {
+      const u = 1 - k;
+      ctx.globalAlpha = k;
+      ctx.fillStyle = '#ff7a2a';
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r * (0.5 + u * 0.6), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#ffd65a';
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r * (0.35 + u * 0.3) * k, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    } else if (p.k === 'scorch') {
+      ctx.globalAlpha = k * 0.45;
+      ctx.fillStyle = '#0d0806';
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    } else if (p.k === 'coin') {
+      if (p.life > p.max - p.d) continue;
+      ctx.fillStyle = D.P.line;
+      ctx.fillRect(p.x - 4, p.y - 4, 8, 8);
+      ctx.fillStyle = D.P.gold;
+      ctx.fillRect(p.x - 3, p.y - 3, 6, 6);
+      ctx.fillStyle = '#fffbe0';
+      ctx.fillRect(p.x - 2, p.y - 2, 2, 2);
+    } else if (p.k === 'cloud') {
+      ctx.globalAlpha = Math.min(1, k * 3) * 0.55;
+      ctx.fillStyle = '#dfe9f5';
+      ctx.beginPath();
+      ctx.arc(p.x + Math.sin(G.t * 2 + p.ph) * 4, p.y + Math.cos(G.t * 1.7 + p.ph) * 3, p.s, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    } else if (p.k === 'chomp') {
+      // 木犬咬下去：上下两排牙合上
+      const u = 1 - k;
+      const close = Math.min(1, u * 3);
+      const gap = 22 * (1 - close);
+      ctx.globalAlpha = Math.min(1, k * 2);
+      for (const d of [-1, 1]) {
+        const y0 = p.y + d * (gap + 6);
+        ctx.fillStyle = D.P.line;
+        ctx.fillRect(p.x - 22, y0 - 5, 44, 10);
+        ctx.fillStyle = '#f4ead8';
+        for (let i = 0; i < 5; i++) {
+          ctx.beginPath();
+          ctx.moveTo(p.x - 20 + i * 9, y0 - d * 3);
+          ctx.lineTo(p.x - 16 + i * 9, y0 - d * 11);
+          ctx.lineTo(p.x - 12 + i * 9, y0 - d * 3);
+          ctx.fill();
+        }
+      }
+      ctx.globalAlpha = 1;
     }
   }
 }
@@ -1179,8 +1552,13 @@ function drawHud(st) {
   ctx.fillStyle = D.P.red;
   ctx.fillRect(bx - 12, 16, 4, 3);
   // 金币
-  coinIcon(F.w - 64, 21, 8);
-  bigText(ctx, '' + (meta.gold + st.gold), F.w - 50, 21, 15, D.P.gold, D.P.line, 'left');
+  const gb = 1 + (G.goldBump || 0) * 0.35;
+  ctx.save();
+  ctx.translate(F.w - 64, 21);
+  ctx.scale(gb, gb);
+  coinIcon(0, 0, 8);
+  ctx.restore();
+  bigText(ctx, '' + (meta.gold + st.gold), F.w - 50, 21, 15 * (1 + (G.goldBump || 0) * 0.15), D.P.gold, D.P.line, 'left');
   // 已经拿到的技能
   let ix = 14;
   for (const s of C.SKILLS) {
@@ -1371,9 +1749,10 @@ function drawResult() {
   // 弩机升级
   const cost = C.UPGRADE.cost(meta.bowLv);
   const can = meta.gold >= cost;
-  button('upgrade', F.w / 2 - 110, 516, 220, 46, '升级弩机  ' + cost, { icon: 'coin', size: 17, color: can ? '#8a5a1e' : null, hi: '#c98a2b', disabled: !can || !live });
+  button('upgrade', F.w / 2 - 110, 516, 220, 46, '弩机 Lv.' + meta.bowLv + '→' + (meta.bowLv + 1) + '  ' + cost, { icon: 'coin', size: 16, color: can ? '#8a5a1e' : null, hi: '#c98a2b', disabled: !can || !live, pop: can ? 1 + Math.sin(G.t * 6) * 0.02 : 1 });
   // 带哪只伙伴
-  bigText(ctx, '带谁上城墙', F.w / 2, 590, 13, '#cbb8a8');
+  const cur = C.BUDDIES.find((b) => b.id === meta.buddy);
+  bigText(ctx, cur ? '带' + cur.name + '：' + cur.note : '带谁上城墙', F.w / 2, 590, 13, cur ? D.P.gold : '#cbb8a8');
   C.BUDDIES.forEach((b, i) => {
     const x = F.w / 2 - 84 + i * 84;
     const y = 630;
@@ -1408,6 +1787,34 @@ function drawResult() {
       bigText(ctx, '第' + (b.unlockLevel + 1) + '关', x, y + 17, 10, '#7a6a60');
     }
   });
+}
+
+// 结算页点了升级：中间弹出一把大弩，放光
+function drawUpgradeShow() {
+  const k = G.upShow / 1.1;
+  const u = 1 - k;
+  const sc = 3.2 * easeOutBack(clamp(u / 0.25, 0, 1));
+  ctx.globalAlpha = Math.min(1, k * 3) * 0.7;
+  ctx.fillStyle = '#0a0605';
+  ctx.fillRect(-50, -50, F.w + 100, F.h + 100);
+  ctx.globalAlpha = 1;
+  ctx.save();
+  ctx.translate(F.w / 2, 300);
+  ctx.globalAlpha = Math.min(1, k * 3);
+  ctx.save();
+  ctx.rotate(G.t * 1.5);
+  ctx.fillStyle = 'rgba(255,214,90,0.3)';
+  D.star(ctx, 0, 0, 110, 36, 14);
+  ctx.restore();
+  ctx.scale(sc, sc);
+  D.drawCrossbow(ctx, 0, 22, 0, G.t, meta.bowLv);
+  ctx.restore();
+  ctx.save();
+  ctx.globalAlpha = Math.min(1, k * 3);
+  bigText(ctx, '弩机 Lv.' + meta.bowLv, F.w / 2, 380, 30, D.P.gold);
+  bigText(ctx, '伤害 +' + Math.round(C.UPGRADE.pct * 100 * meta.bowLv) + '%', F.w / 2, 410, 16, '#fffaf0');
+  ctx.restore();
+  ctx.globalAlpha = 1;
 }
 
 // —— 手指 ——
@@ -1480,13 +1887,41 @@ function press(id) {
     meta.gold -= cost;
     meta.bowLv++;
     saveMeta();
-    snd('upgrade');
+    snd('upgradeBig');
+    G.upShow = 1.1;
+    G.flash = 0.2;
+    G.flashColor = '#fff3d0';
+    G.shake = 6;
+    for (let k = 0; k < 18; k++) G.fx2.push(mkSpark(F.w / 2, 300));
+    PF.vibrate(true);
   } else if (id.indexOf('buddy_') === 0) {
     const bid = id.slice(6);
     meta.buddy = meta.buddy === bid ? null : bid;
     saveMeta();
     snd('tap');
   }
+}
+function mkSpark(x, y) {
+  const a = Math.random() * Math.PI * 2;
+  const v = 150 + Math.random() * 260;
+  return { x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 0.5 + Math.random() * 0.3, max: 0.8, c: Math.random() < 0.5 ? D.P.gold : '#fff2b0' };
+}
+function drawFx2() {
+  const dt = 1 / 60;
+  for (let i = G.fx2.length - 1; i >= 0; i--) {
+    const p = G.fx2[i];
+    p.life -= dt;
+    if (p.life <= 0) { G.fx2.splice(i, 1); continue; }
+    p.vy += 300 * dt;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    ctx.globalAlpha = Math.min(1, p.life * 2);
+    ctx.fillStyle = D.P.line;
+    ctx.fillRect(p.x - 3, p.y - 3, 6, 6);
+    ctx.fillStyle = p.c;
+    ctx.fillRect(p.x - 2, p.y - 2, 4, 4);
+  }
+  ctx.globalAlpha = 1;
 }
 function setTimeoutSafe(fn, ms) {
   if (typeof setTimeout === 'function') setTimeout(fn, ms);
@@ -1543,6 +1978,12 @@ function frame() {
   G.shake = Math.max(0, G.shake - dt * 30);
   G.flash = Math.max(0, G.flash - dt);
   G.banner = Math.max(0, G.banner - dt);
+  if (G.banner <= 0) {
+    G.bowShow = Math.max(0, (G.bowShow || 0) - dt);
+    G.palShow = Math.max(0, (G.palShow || 0) - dt);
+  }
+  G.goldBump = Math.max(0, (G.goldBump || 0) - dt * 5);
+  G.upShow = Math.max(0, (G.upShow || 0) - dt);
 
   render(dt);
   PF.nextFrame(frame);
@@ -1575,12 +2016,40 @@ function render() {
     ctx.globalAlpha = 1;
   }
   D.drawDragon(ctx, st, G.t);
+  // 蒸汽龟的蒸汽罩着时：整条龙蒙一层白汽（看得出变慢了）
+  if (st.slowT > 0) {
+    ctx.globalAlpha = Math.min(1, st.slowT) * 0.18;
+    ctx.fillStyle = '#dfe9f5';
+    for (const g of st.segs) if (g.y > -20) { ctx.beginPath(); ctx.arc(g.x, g.y, C.DRAGON.r + 3, 0, Math.PI * 2); ctx.fill(); }
+    ctx.globalAlpha = 1;
+  }
   D.drawBullets(ctx, st);
   // 阿铸 + 伙伴
   const moving = Math.abs(G.targetX - st.px) > 2;
-  if (meta.buddy && st.buddy) D.drawBuddy(ctx, st.buddy.id, st.px + 34, F.playerY + (st.buddy.id === 'que' ? -24 + Math.sin(G.t * 4) * 3 : 14), G.t, 1);
-  D.drawPlayer(ctx, st.px, F.playerY, G.t, G.recoil, moving);
+  if (G.bowShow > 0) {
+    const k = Math.min(1, G.bowShow);
+    ctx.globalAlpha = k * (0.35 + 0.2 * Math.sin(G.t * 10));
+    ctx.fillStyle = D.P.gold;
+    ctx.beginPath();
+    ctx.arc(st.px, F.playerY - 16, 34 + (1.8 - G.bowShow) * 10, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+  D.drawPlayer(ctx, st.px, F.playerY, G.t, G.recoil, moving, st.bowLv);
+  D.drawPal(ctx, st, G.t);
+  D.drawShells(ctx, st, G.t);
   drawFx();
+  if (G.bowShow > 0 && G.mode === 'play') {
+    ctx.globalAlpha = Math.min(1, G.bowShow * 2);
+    bigText(ctx, '弩机 Lv.' + st.bowLv, st.px, F.playerY - 74 - (1.8 - G.bowShow) * 8, 18, D.P.gold);
+    ctx.globalAlpha = 1;
+  }
+  if (G.palShow > 0 && G.mode === 'play' && st.pal) {
+    ctx.globalAlpha = Math.min(1, G.palShow * 2);
+    bigText(ctx, st.buddy.name + ' 上城墙！', F.w / 2, 380, 22, '#fffaf0');
+    bigText(ctx, st.buddy.note, F.w / 2, 406, 14, D.P.gold);
+    ctx.globalAlpha = 1;
+  }
   // 危险时屏幕四周发红
   if (st.danger > 0 && G.mode === 'play') {
     const a = st.danger * 0.35 * (0.6 + 0.4 * Math.sin(G.t * 12));
@@ -1606,6 +2075,8 @@ function render() {
   if (G.mode === 'play' && st.mode === 'play' && st.lever.offer > 0) drawLever(st);
   if (G.mode === 'play' && st.mode === 'cards') drawCards(st);
   if (G.mode === 'result') drawResult();
+  if (G.mode === 'result' && G.upShow > 0) drawUpgradeShow();
+  if (G.mode === 'result') drawFx2();
   // 静音键
   if (G.mode !== 'result') {
     ctx.globalAlpha = 0.6;
@@ -1852,7 +2323,7 @@ function unlockAudio() {
   const a = audioCtx();
   if (a && a.state === 'suspended' && a.resume) a.resume();
 }
-function sound(name, volume) {
+function sound(name, volume, rate) {
   if (muted) return;
   const a = audioCtx();
   if (!a) return;
@@ -1867,6 +2338,7 @@ function sound(name, volume) {
     }
     const src = a.createBufferSource();
     src.buffer = buffers[name];
+    if (rate && src.playbackRate) src.playbackRate.value = rate; // 连碎时音越来越高
     const g = a.createGain();
     g.gain.value = volume === undefined ? 0.6 : volume;
     src.connect(g);
@@ -1963,6 +2435,21 @@ const RECIPES = {
   win: { len: 1.4, f: (t, n) => (sin(587, t) * 0.5 + sin(880, t) * 0.4 + sin(1174, t) * 0.2) * (t < 0.9 ? Math.min(1, t * 8) * 0.5 : env(t - 0.9, 0.001, 0.15) * 0.5) + (t > 0.9 ? n() * env(t - 0.9, 0.002, 0.18) * 0.7 : 0) },
   // 输：城门一声闷响 + 往下掉的音
   lose: { len: 0.9, f: (t, n) => n() * env(t, 0.002, 0.08) * 0.5 + sin(60, t) * env(t, 0.002, 0.25) * 0.7 + sin(330 - 200 * t, t) * env(t, 0.05, 0.3) * 0.25 },
+  // 重箭打中：更闷更厚的「咚」（武器升级以后换这个）
+  hitHeavy: { len: 0.09, f: (t, n) => sin(300 - 1500 * t, t) * env(t, 0.001, 0.03) * 0.35 + n() * env(t, 0.001, 0.008) * 0.25 },
+  // 攻城槌碎了：大的「哐」
+  ram: { len: 0.6, f: (t, n) => n() * env(t, 0.002, 0.1) * 0.7 + sin(70, t) * env(t, 0.002, 0.25) * 0.7 + sin(220, t) * env(t, 0.002, 0.15) * 0.3 },
+  // 铜雀：出发「啾」、啄「笃笃」
+  chirp: { len: 0.16, f: (t) => sin(2600 + 1800 * Math.sin(t * 60), t) * env(t, 0.005, 0.05) * 0.25 },
+  peck: { len: 0.05, f: (t, n) => (sq(1900, t) * 0.5 + n() * 0.5) * env(t, 0.001, 0.012) * 0.3 },
+  // 木犬：出发「汪」、咬「咔嚓」
+  bark: { len: 0.16, f: (t) => sq(260 + 200 * Math.exp(-t * 30), t) * env(t, 0.004, 0.05) * 0.3 },
+  bite: { len: 0.3, f: (t, n) => n() * env(t, 0.001, 0.03) * 0.6 + sin(140 - 120 * t, t) * env(t, 0.002, 0.1) * 0.6 },
+  // 蒸汽龟：放炮「嘭」、落地大爆、蒸汽「嘶」
+  mortar: { len: 0.25, f: (t, n) => sin(110 - 200 * t, t) * env(t, 0.002, 0.06) * 0.6 + n() * env(t, 0.001, 0.02) * 0.3 },
+  boom: { len: 0.8, f: (t, n) => n() * env(t, 0.002, 0.14) * 0.75 + sin(55 - 30 * t, t) * env(t, 0.002, 0.3) * 0.8 + n() * env(Math.max(0, t - 0.25), 0.05, 0.25) * (t > 0.25 ? 0.15 : 0) },
+  // 弩机升级（结算页）：上弦三下 + 一声亮的大「锵」
+  upgradeBig: { len: 0.9, f: (t, n) => (t < 0.36 ? n() * env(t % 0.12, 0.001, 0.015) * 0.5 : 0) + (t > 0.36 ? (sin(784, t) + sin(1175, t) * 0.7 + sin(1568, t) * 0.5) * env(t - 0.36, 0.003, 0.18) * 0.32 : 0) },
   // 按钮
   tap: { len: 0.06, f: (t) => sq(980, t) * env(t, 0.001, 0.02) * 0.2 },
   // 升级弩机：上弦 + 叮
@@ -2043,7 +2530,10 @@ function newRun(levelIndex, meta, seed) {
     endT: 0,
   };
   C.SKILLS.forEach((s) => (st.skills[s.id] = 0));
-  if (buddy && buddy.id === 'gui') st.skills.blast = 1;
+  // 伙伴在场上的状态：home = 待在阿铸身边等冷却；其他状态见 stepBuddy
+  st.pal = buddy ? { state: 'home', cd: buddy.cd * 0.5, x: st.px + 34, y: C.FIELD.playerY - 20, t: 0, n: 0, target: -1, fx: 0, fy: 0 } : null;
+  st.shells = [];
+  st.slowT = 0;
   st.mods = mods(st);
   placeSegs(st);
   return st;
@@ -2051,18 +2541,20 @@ function newRun(levelIndex, meta, seed) {
 
 function mods(st) {
   const k = st.skills;
-  const que = st.buddy && st.buddy.id === 'que';
+  const base = C.BOW.dmg * (1 + C.UPGRADE.pct * st.bowLv);
   return {
-    dmg: C.BOW.dmg * (1 + C.UPGRADE.pct * st.bowLv) * Math.pow(1.3, k.power),
+    base, // 弩机一箭（只算升级）：伙伴的伤害按它的倍数算
+    dmg: base * Math.pow(1.3, k.power),
     interval: C.BOW.interval * Math.pow(0.8, k.rate),
-    n: 1 + k.multi * (que ? 2 : 1),
+    n: 1 + k.multi,
     pierce: k.pierce,
     bounce: k.bounce,
     crit: 0.15 * k.crit,
     frost: Math.pow(0.85, k.frost),
     blast: k.blast,
-    blastR: (34 + 12 * k.blast) * (st.buddy && st.buddy.id === 'gui' ? 1.5 : 1),
-    bounceMul: st.buddy && st.buddy.id === 'quan' ? 2 : 1,
+    blastR: 34 + 12 * k.blast,
+    // 武器有多「重」：升级和重弩都算，画面上箭的样子、打中的声音跟着变
+    tier: st.bowLv + 2 * k.power,
   };
 }
 
@@ -2081,7 +2573,8 @@ function speedNow(st) {
   if (!st.rushed && front && tail.s < 10 && front.s < st.path.len * C.DRAGON.rushUntil) return C.DRAGON.rush;
   st.rushed = true;
   const gone = 1 - st.segs.length / st.total;
-  return st.lv.v * (1 + st.lv.accel * st.t) * (1 + C.DRAGON.rage * gone * gone) * st.mods.frost;
+  const steam = st.slowT > 0 && st.buddy ? st.buddy.slow : 1; // 蒸汽龟的蒸汽卡住齿轮
+  return st.lv.v * (1 + st.lv.accel * st.t) * (1 + C.DRAGON.rage * gone * gone) * st.mods.frost * steam;
 }
 
 function fire(st) {
@@ -2121,7 +2614,7 @@ function kill(st, g) {
   st.kills++;
   st.gold += C.GOLD.perKill;
   st.comboTimes.push(st.t);
-  st.events.push({ t: 'kill', x: g.x, y: g.y, chest: g.chest, front: i === 0 });
+  st.events.push({ t: 'kill', x: g.x, y: g.y, chest: g.chest, front: i === 0, ram: g.ram, max: g.max, combo: st.comboTimes.length });
   if (g.chest) {
     st.pendingCards++;
     st.events.push({ t: 'chest', x: g.x, y: g.y });
@@ -2214,7 +2707,7 @@ function step(st, dtReal, targetX) {
         const dy = g.y - u.y;
         if (dx * dx + dy * dy < R * R) {
           const crit = st.rand() < m.crit;
-          const dmg = m.dmg * (crit ? 3 : 1) * (u.bounced ? m.bounceMul : 1);
+          const dmg = m.dmg * (crit ? 3 : 1);
           damage(st, g, dmg, u.x, u.y, crit);
           if (u.pierce > 0) {
             u.pierce--;
@@ -2226,6 +2719,9 @@ function step(st, dtReal, targetX) {
     }
     if (dead) st.bullets.splice(b, 1);
   }
+
+  if (st.pal) stepBuddy(st, dt);
+  if (st.slowT > 0) st.slowT -= dt;
 
   // 连碎
   while (st.comboTimes.length && st.comboTimes[0] < st.t - 1) st.comboTimes.shift();
@@ -2267,6 +2763,161 @@ function step(st, dtReal, targetX) {
 
   // 开机关匣：停下来三选一
   if (st.pendingCards > 0) openCards(st);
+}
+
+// —— 机关伙伴：三只三种打法 ——
+const segById = (st, id) => st.segs.find((g) => g.id === id);
+const visible = (st) => st.segs.filter((g) => g.s >= 0 && g.y > 50);
+function moveTo(p, x, y, v, dt) {
+  const dx = x - p.x;
+  const dy = y - p.y;
+  const d = Math.hypot(dx, dy);
+  if (d <= v * dt || d < 1) {
+    p.x = x;
+    p.y = y;
+    return true;
+  }
+  p.x += (dx / d) * v * dt;
+  p.y += (dy / d) * v * dt;
+  p.fx = dx / d;
+  return false;
+}
+function stepBuddy(st, dt) {
+  const b = st.buddy;
+  const p = st.pal;
+  const homeX = clamp(st.px + (b.id === 'gui' ? -48 : 36), 16, C.FIELD.w - 16);
+  const homeY = C.FIELD.playerY + (b.id === 'que' ? -26 : b.id === 'gui' ? 14 : 16);
+  const m = st.mods;
+  if (b.id === 'que') {
+    if (p.state === 'home') {
+      moveTo(p, homeX, homeY, 900, dt);
+      p.cd -= dt;
+      if (p.cd <= 0) {
+        const vis = visible(st);
+        const chests = vis.filter((g) => g.chest);
+        // 先挑最靠前的机关匣；没有就挑最硬的那节
+        const g = chests.length ? chests[0] : vis.reduce((a, o) => (!a || o.hp > a.hp ? o : a), null);
+        if (g) {
+          p.state = 'fly';
+          p.target = g.id;
+          st.events.push({ t: 'palGo', x: p.x, y: p.y });
+        } else p.cd = 0.3;
+      }
+    } else if (p.state === 'fly') {
+      const g = segById(st, p.target);
+      if (!g) p.state = 'back';
+      else if (moveTo(p, g.x, g.y - 12, b.fly, dt)) {
+        p.state = 'peck';
+        p.n = b.pecks;
+        p.t = 0;
+      }
+    } else if (p.state === 'peck') {
+      const g = segById(st, p.target);
+      if (!g) p.state = 'back';
+      else {
+        p.x = g.x;
+        p.y = g.y - 12;
+        p.t -= dt;
+        if (p.t <= 0) {
+          p.t = 0.08;
+          p.n--;
+          st.events.push({ t: 'peck', x: g.x, y: g.y, chest: g.chest });
+          damage(st, g, m.base * b.peckDmg * (g.chest ? b.chestMul : 1), g.x, g.y - 6, false);
+          if (p.n <= 0) p.state = 'back';
+        }
+      }
+    } else if (p.state === 'back') {
+      if (moveTo(p, homeX, homeY, b.fly, dt)) {
+        p.state = 'home';
+        p.cd = b.cd;
+      }
+    }
+  } else if (b.id === 'quan') {
+    if (p.state === 'home') {
+      p.x = homeX;
+      p.y = homeY;
+      p.cd -= dt;
+      const g = st.segs[0];
+      if (p.cd <= 0 && g && g.s >= 0 && g.y > 60) {
+        p.state = 'leap';
+        p.t = 0;
+        p.sx = p.x;
+        p.sy = p.y;
+        st.events.push({ t: 'palGo', x: p.x, y: p.y });
+      }
+    } else if (p.state === 'leap' || p.state === 'back') {
+      const T = 0.32;
+      p.t += dt;
+      const u = Math.min(1, p.t / T);
+      const g = st.segs[0];
+      // 往前扑：落点跟着龙头；跳回来：落回阿铸身边
+      const tx = p.state === 'leap' ? (g ? g.x : p.sx) : homeX;
+      const ty = p.state === 'leap' ? (g ? g.y : p.sy) : homeY;
+      p.x = p.sx + (tx - p.sx) * u;
+      p.y = p.sy + (ty - p.sy) * u - Math.sin(u * Math.PI) * 70;
+      p.fx = tx < p.sx ? -1 : 1;
+      if (u >= 1) {
+        if (p.state === 'leap') {
+          if (g) {
+            const push = b.push * C.DRAGON.gap;
+            st.events.push({ t: 'bite', x: g.x, y: g.y });
+            damage(st, g, m.base * b.biteDmg, g.x, g.y, false);
+            for (const o of st.segs) o.s -= push;
+            placeSegs(st);
+          }
+          p.state = 'back';
+          p.t = 0;
+          p.sx = p.x;
+          p.sy = p.y;
+        } else {
+          p.state = 'home';
+          p.cd = b.cd;
+        }
+      }
+    }
+  } else if (b.id === 'gui') {
+    p.x = homeX;
+    p.y = homeY;
+    p.cd -= dt;
+    if (p.recoil > 0) p.recoil -= dt;
+    if (p.cd <= 0) {
+      // 往龙最密的地方打；一样密就打离城门近的
+      const vis = visible(st);
+      let best = null;
+      let bestN = 0;
+      for (const g of vis) {
+        let n = 0;
+        for (const o of vis) if (Math.hypot(o.x - g.x, o.y - g.y) < b.shellR) n++;
+        if (n > bestN || (n === bestN && best && g.s > best.s)) {
+          best = g;
+          bestN = n;
+        }
+      }
+      if (best) {
+        st.shells.push({ x0: p.x, y0: p.y - 14, tx: best.x, ty: best.y, target: best.id, t: 0, T: b.flight });
+        st.events.push({ t: 'mortar', x: p.x, y: p.y - 14 });
+        p.cd = b.cd;
+        p.recoil = 0.25;
+      } else p.cd = 0.3;
+    }
+  }
+  // 炮弹：飞的时候跟着目标那节（打不空）
+  for (let i = st.shells.length - 1; i >= 0; i--) {
+    const sh = st.shells[i];
+    sh.t += dt;
+    const g = segById(st, sh.target);
+    if (g) {
+      sh.tx = g.x;
+      sh.ty = g.y;
+    }
+    if (sh.t >= sh.T) {
+      st.shells.splice(i, 1);
+      st.events.push({ t: 'shell', x: sh.tx, y: sh.ty, r: b.shellR });
+      st.slowT = b.slowSec;
+      const near = st.segs.filter((o) => o.s >= 0 && Math.hypot(o.x - sh.tx, o.y - sh.ty) < b.shellR);
+      for (const o of near) damage(st, o, m.base * b.shellDmg, o.x, o.y, false);
+    }
+  }
 }
 
 function openCards(st) {

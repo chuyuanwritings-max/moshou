@@ -117,7 +117,7 @@ function unlockAudio() {
   const a = audioCtx();
   if (a && a.state === 'suspended' && a.resume) a.resume();
 }
-function sound(name, volume) {
+function sound(name, volume, rate) {
   if (muted) return;
   const a = audioCtx();
   if (!a) return;
@@ -132,6 +132,7 @@ function sound(name, volume) {
     }
     const src = a.createBufferSource();
     src.buffer = buffers[name];
+    if (rate && src.playbackRate) src.playbackRate.value = rate; // 连碎时音越来越高
     const g = a.createGain();
     g.gain.value = volume === undefined ? 0.6 : volume;
     src.connect(g);

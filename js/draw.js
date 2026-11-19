@@ -54,9 +54,30 @@ const AZHU_PAL = {
   V: '#6b3f22', v: '#45280f', B: '#2a1a10', b: P.brassHi, P: '#3a3346', p: '#262033', O: '#1e1410',
 };
 
-function drawCrossbow(ctx, x, y, recoil, t) {
+function drawCrossbow(ctx, x, y, recoil, t, lv) {
+  lv = lv || 0;
   // 弩身（竖着朝上）
   const yy = y - recoil * 4;
+  const arm = 17 + Math.min(5, lv) * 1.2; // 升级：弓臂越来越长
+  // 5 级以上：炉心发红光
+  if (lv >= 5) {
+    ctx.globalAlpha = 0.25 + 0.15 * Math.sin(t * 8);
+    ctx.fillStyle = lv >= 8 ? '#ff5a3a' : '#ffb347';
+    ctx.beginPath();
+    ctx.arc(x, yy - 16, 20, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+  // 3 级以上：两边多挂两个蒸汽罐
+  if (lv >= 3) {
+    for (const d of [-1, 1]) {
+      ctx.fillStyle = P.line;
+      roundRect(ctx, x + d * 11 - 4, yy - 14, 8, 11, 2);
+      ctx.fill();
+      ctx.fillStyle = lv >= 6 ? P.gold : P.brassLo;
+      ctx.fillRect(x + d * 11 - 2.5, yy - 12.5, 5, 8);
+    }
+  }
   ctx.fillStyle = P.line;
   ctx.fillRect(x - 4, yy - 30, 8, 30);
   ctx.fillStyle = P.brass;
@@ -78,26 +99,34 @@ function drawCrossbow(ctx, x, y, recoil, t) {
   ctx.lineWidth = 5;
   ctx.lineCap = 'round';
   ctx.beginPath();
-  ctx.moveTo(x - 17, yy - 22);
-  ctx.quadraticCurveTo(x, yy - 34 + recoil * 2, x + 17, yy - 22);
+  ctx.moveTo(x - arm, yy - 22);
+  ctx.quadraticCurveTo(x, yy - 34 + recoil * 2, x + arm, yy - 22);
   ctx.stroke();
-  ctx.strokeStyle = P.brassHi;
+  ctx.strokeStyle = lv >= 6 ? '#fff2b0' : lv >= 1 ? P.gold : P.brassHi;
   ctx.lineWidth = 2.2;
   ctx.stroke();
   // 弦
   ctx.strokeStyle = '#efe0c0';
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(x - 16, yy - 22);
+  ctx.moveTo(x - arm + 1, yy - 22);
   ctx.lineTo(x, yy - 20 + recoil * 3);
-  ctx.lineTo(x + 16, yy - 22);
+  ctx.lineTo(x + arm - 1, yy - 22);
   ctx.stroke();
   // 箭头那点亮光
   ctx.fillStyle = '#fff2b0';
   ctx.fillRect(x - 1.5, yy - 34, 3, 4);
+  // 刚放完箭：枪口一团火光
+  if (recoil > 0.55) {
+    const k = (recoil - 0.55) / 0.45;
+    ctx.globalAlpha = k;
+    ctx.fillStyle = '#fff2b0';
+    star(ctx, x, yy - 36, 7 + lv * 0.6, 3, 6);
+    ctx.globalAlpha = 1;
+  }
 }
 
-function drawPlayer(ctx, x, y, t, recoil, moving) {
+function drawPlayer(ctx, x, y, t, recoil, moving, lv) {
   const bob = moving ? Math.sin(t * 22) * 1.2 : Math.sin(t * 3) * 0.6;
   // 影子
   ctx.fillStyle = 'rgba(0,0,0,0.35)';
@@ -110,7 +139,7 @@ function drawPlayer(ctx, x, y, t, recoil, moving) {
   ctx.restore();
   const u = 3;
   pix(ctx, AZHU, AZHU_PAL, x - 8 * u, y - 30 + bob, u);
-  drawCrossbow(ctx, x, y - 26 + bob, recoil, t);
+  drawCrossbow(ctx, x, y - 26 + bob, recoil, t, lv);
 }
 
 // —— 机关伙伴（8 比特小图，跟在阿铸身边；收藏要好看）——
@@ -160,7 +189,7 @@ const BUDDY_PAL = {
   gui: { L: P.line, g: '#5f8a4a', G: '#8cc06a', d: '#3e5e30', s: '#d9b28a', E: P.line, c: P.brass, h: P.brassHi },
 };
 
-function drawBuddy(ctx, id, x, y, t, s) {
+function drawBuddy(ctx, id, x, y, t, s, flip) {
   const map = BUDDY_PIX[id];
   if (!map) return;
   const u = 2 * (s || 1);
@@ -169,7 +198,13 @@ function drawBuddy(ctx, id, x, y, t, s) {
   let bob = 0;
   if (id === 'que') bob = Math.sin(t * 9) * 2 * (s || 1);
   else if (id === 'quan') bob = Math.abs(Math.sin(t * 8)) * -1.5 * (s || 1);
-  pix(ctx, map, BUDDY_PAL[id], x - w / 2, y - h / 2 + bob, u);
+  if (flip) {
+    ctx.save();
+    ctx.translate(x, 0);
+    ctx.scale(-1, 1);
+    pix(ctx, map, BUDDY_PAL[id], -w / 2, y - h / 2 + bob, u);
+    ctx.restore();
+  } else pix(ctx, map, BUDDY_PAL[id], x - w / 2, y - h / 2 + bob, u);
   if (id === 'gui' && Math.sin(t * 4) > 0.2) {
     ctx.fillStyle = 'rgba(239,230,220,0.75)';
     ctx.beginPath();
@@ -469,8 +504,10 @@ function fmtHp(v) {
 function drawSeg(ctx, g, t, isTail) {
   const R = C.DRAGON.r;
   const wob = Math.sin(t * 6 + g.id * 0.9) * 0.8;
+  const pop = 1 + Math.max(0, g.flash) * 2.2; // 打中那一下鼓一下
   ctx.save();
   ctx.translate(g.x, g.y + wob);
+  ctx.scale(pop, pop);
   if (g.chest) {
     // 机关匣：朱漆方匣 + 金箍 + 齿轮
     ctx.rotate(g.a || 0);
@@ -644,20 +681,120 @@ function drawDragon(ctx, st, t) {
   if (segs.length && segs[0].y > -30) drawHead(ctx, segs[0], t, st.danger);
 }
 
+// 箭的样子跟着武器「多重」变：黄铜 → 银蓝 → 金光 → 红热带火尾
+const BOLT = [
+  { core: P.brassHi, tip: '#fff6c8', len: 12, w: 2.4, trail: 0 },
+  { core: '#cfe6ff', tip: '#ffffff', len: 14, w: 2.8, trail: 18, tc: '120,190,255' },
+  { core: P.gold, tip: '#fffbe0', len: 16, w: 3.2, trail: 26, tc: '255,214,90', glow: 'rgba(255,214,90,0.35)' },
+  { core: '#ff7a3a', tip: '#fff0b0', len: 18, w: 3.6, trail: 34, tc: '255,110,50', glow: 'rgba(255,100,40,0.4)' },
+];
+function boltTier(tier) {
+  return BOLT[tier >= 7 ? 3 : tier >= 4 ? 2 : tier >= 2 ? 1 : 0];
+}
 function drawBullets(ctx, st) {
+  const B = boltTier(st.mods.tier || 0);
   for (const u of st.bullets) {
     const a = Math.atan2(u.vy, u.vx);
     ctx.save();
     ctx.translate(u.x, u.y);
     ctx.rotate(a);
+    if (B.trail) {
+      ctx.fillStyle = 'rgba(' + B.tc + ',0.35)';
+      ctx.fillRect(-B.len - B.trail, -B.w / 2, B.trail, B.w);
+    }
+    if (B.glow) {
+      ctx.fillStyle = B.glow;
+      ctx.fillRect(-B.len, -B.w * 1.5, B.len + 8, B.w * 3);
+    }
     ctx.fillStyle = P.line;
-    ctx.fillRect(-9, -2.5, 15, 5);
-    ctx.fillStyle = u.bounced ? '#7dff9a' : P.brassHi;
-    ctx.fillRect(-8, -1.2, 12, 2.4);
-    ctx.fillStyle = '#fff6c8';
-    ctx.fillRect(3, -2, 4, 4);
+    ctx.fillRect(-B.len + 3, -B.w / 2 - 1.2, B.len + 3, B.w + 2.4);
+    ctx.fillStyle = u.bounced ? '#7dff9a' : B.core;
+    ctx.fillRect(-B.len + 4, -B.w / 2, B.len, B.w);
+    ctx.fillStyle = B.tip;
+    ctx.fillRect(3, -B.w / 2 - 0.6, 4, B.w + 1.2);
     ctx.restore();
   }
 }
 
-module.exports = { P, pix, drawPlayer, drawBuddy, drawIcon, drawBackground, drawDragon, drawBullets, star, fmtHp, bigText, clamp };
+// 伙伴在场上：跟着 st.pal 的位置和状态画
+function drawPal(ctx, st, t) {
+  const p = st.pal;
+  if (!p) return;
+  const b = st.buddy;
+  // 冷却圈：待命时脚下一圈慢慢填满，满了就出手
+  if (p.state === 'home' && b.cd) {
+    const k = clamp(1 - p.cd / b.cd, 0, 1);
+    ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y + 14, 9, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = k >= 1 ? '#ffffff' : P.gold;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y + 14, 9, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * k);
+    ctx.stroke();
+  }
+  if (b.id === 'que') {
+    const flying = p.state !== 'home';
+    if (flying) {
+      // 金色尾迹
+      ctx.fillStyle = 'rgba(255,214,90,0.35)';
+      ctx.beginPath();
+      ctx.arc(p.x - (p.fx || 0) * 10, p.y + 4, 6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    const dip = p.state === 'peck' ? (p.t > 0.04 ? 4 : 0) : 0;
+    if (flying) {
+      ctx.fillStyle = 'rgba(255,240,190,0.35)';
+      ctx.beginPath();
+      ctx.arc(p.x, p.y + dip, 17, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    drawBuddy(ctx, 'que', p.x, p.y + dip, t * (flying ? 2.5 : 1), flying ? 1.8 : 1.4, (p.fx || 0) < 0);
+  } else if (b.id === 'quan') {
+    const air = p.state !== 'home';
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    if (air) ctx.rotate((p.fx || 1) * (p.state === 'leap' ? -0.5 : 0.4));
+    drawBuddy(ctx, 'quan', 0, 0, air ? 0 : t, 1.4, (p.fx || 1) < 0);
+    ctx.restore();
+  } else if (b.id === 'gui') {
+    const r = Math.max(0, p.recoil || 0) / 0.25;
+    ctx.save();
+    ctx.translate(p.x, p.y + r * 3);
+    ctx.scale(1 + r * 0.15, 1 - r * 0.15);
+    drawBuddy(ctx, 'gui', 0, 0, t, 1.4, true);
+    ctx.restore();
+  }
+}
+
+// 蒸汽龟的炮弹：高高的抛物线，落点先亮一个红圈（看得见要炸哪）
+function drawShells(ctx, st) {
+  for (const sh of st.shells) {
+    const u = sh.t / sh.T;
+    const R = st.buddy ? st.buddy.shellR : 60;
+    ctx.globalAlpha = 0.3 + 0.4 * u;
+    ctx.strokeStyle = P.red;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([5, 4]);
+    ctx.beginPath();
+    ctx.arc(sh.tx, sh.ty, R * (1.25 - 0.25 * u), 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
+    const x = sh.x0 + (sh.tx - sh.x0) * u;
+    const y = sh.y0 + (sh.ty - sh.y0) * u - Math.sin(u * Math.PI) * 160;
+    ctx.fillStyle = P.line;
+    ctx.beginPath();
+    ctx.arc(x, y, 8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#4a4f5c';
+    ctx.beginPath();
+    ctx.arc(x, y, 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#ff9a3c';
+    ctx.fillRect(x - 1.5, y - 9, 3, 3 + Math.sin(sh.t * 40) * 1.5);
+  }
+}
+
+module.exports = { P, pix, drawPlayer, drawCrossbow, drawBuddy, drawPal, drawShells, boltTier, drawIcon, drawBackground, drawDragon, drawBullets, star, fmtHp, bigText, clamp };

@@ -58,7 +58,10 @@ function newRun(levelIndex, meta, seed) {
     endT: 0,
   };
   C.SKILLS.forEach((s) => (st.skills[s.id] = 0));
-  if (buddy && buddy.id === 'gui') st.skills.blast = 1;
+  // 伙伴在场上的状态：home = 待在阿铸身边等冷却；其他状态见 stepBuddy
+  st.pal = buddy ? { state: 'home', cd: buddy.cd * 0.5, x: st.px + 34, y: C.FIELD.playerY - 20, t: 0, n: 0, target: -1, fx: 0, fy: 0 } : null;
+  st.shells = [];
+  st.slowT = 0;
   st.mods = mods(st);
   placeSegs(st);
   return st;
@@ -66,18 +69,20 @@ function newRun(levelIndex, meta, seed) {
 
 function mods(st) {
   const k = st.skills;
-  const que = st.buddy && st.buddy.id === 'que';
+  const base = C.BOW.dmg * (1 + C.UPGRADE.pct * st.bowLv);
   return {
-    dmg: C.BOW.dmg * (1 + C.UPGRADE.pct * st.bowLv) * Math.pow(1.3, k.power),
+    base, // 弩机一箭（只算升级）：伙伴的伤害按它的倍数算
+    dmg: base * Math.pow(1.3, k.power),
     interval: C.BOW.interval * Math.pow(0.8, k.rate),
-    n: 1 + k.multi * (que ? 2 : 1),
+    n: 1 + k.multi,
     pierce: k.pierce,
     bounce: k.bounce,
     crit: 0.15 * k.crit,
     frost: Math.pow(0.85, k.frost),
     blast: k.blast,
-    blastR: (34 + 12 * k.blast) * (st.buddy && st.buddy.id === 'gui' ? 1.5 : 1),
-    bounceMul: st.buddy && st.buddy.id === 'quan' ? 2 : 1,
+    blastR: 34 + 12 * k.blast,
+    // 武器有多「重」：升级和重弩都算，画面上箭的样子、打中的声音跟着变
+    tier: st.bowLv + 2 * k.power,
   };
 }
 
@@ -96,7 +101,8 @@ function speedNow(st) {
   if (!st.rushed && front && tail.s < 10 && front.s < st.path.len * C.DRAGON.rushUntil) return C.DRAGON.rush;
   st.rushed = true;
   const gone = 1 - st.segs.length / st.total;
-  return st.lv.v * (1 + st.lv.accel * st.t) * (1 + C.DRAGON.rage * gone * gone) * st.mods.frost;
+  const steam = st.slowT > 0 && st.buddy ? st.buddy.slow : 1; // 蒸汽龟的蒸汽卡住齿轮
+  return st.lv.v * (1 + st.lv.accel * st.t) * (1 + C.DRAGON.rage * gone * gone) * st.mods.frost * steam;
 }
 
 function fire(st) {
@@ -136,7 +142,7 @@ function kill(st, g) {
   st.kills++;
   st.gold += C.GOLD.perKill;
   st.comboTimes.push(st.t);
-  st.events.push({ t: 'kill', x: g.x, y: g.y, chest: g.chest, front: i === 0 });
+  st.events.push({ t: 'kill', x: g.x, y: g.y, chest: g.chest, front: i === 0, ram: g.ram, max: g.max, combo: st.comboTimes.length });
   if (g.chest) {
     st.pendingCards++;
     st.events.push({ t: 'chest', x: g.x, y: g.y });
@@ -229,7 +235,7 @@ function step(st, dtReal, targetX) {
         const dy = g.y - u.y;
         if (dx * dx + dy * dy < R * R) {
           const crit = st.rand() < m.crit;
-          const dmg = m.dmg * (crit ? 3 : 1) * (u.bounced ? m.bounceMul : 1);
+          const dmg = m.dmg * (crit ? 3 : 1);
           damage(st, g, dmg, u.x, u.y, crit);
           if (u.pierce > 0) {
             u.pierce--;
@@ -241,6 +247,9 @@ function step(st, dtReal, targetX) {
     }
     if (dead) st.bullets.splice(b, 1);
   }
+
+  if (st.pal) stepBuddy(st, dt);
+  if (st.slowT > 0) st.slowT -= dt;
 
   // 连碎
   while (st.comboTimes.length && st.comboTimes[0] < st.t - 1) st.comboTimes.shift();
@@ -282,6 +291,161 @@ function step(st, dtReal, targetX) {
 
   // 开机关匣：停下来三选一
   if (st.pendingCards > 0) openCards(st);
+}
+
+// —— 机关伙伴：三只三种打法 ——
+const segById = (st, id) => st.segs.find((g) => g.id === id);
+const visible = (st) => st.segs.filter((g) => g.s >= 0 && g.y > 50);
+function moveTo(p, x, y, v, dt) {
+  const dx = x - p.x;
+  const dy = y - p.y;
+  const d = Math.hypot(dx, dy);
+  if (d <= v * dt || d < 1) {
+    p.x = x;
+    p.y = y;
+    return true;
+  }
+  p.x += (dx / d) * v * dt;
+  p.y += (dy / d) * v * dt;
+  p.fx = dx / d;
+  return false;
+}
+function stepBuddy(st, dt) {
+  const b = st.buddy;
+  const p = st.pal;
+  const homeX = clamp(st.px + (b.id === 'gui' ? -48 : 36), 16, C.FIELD.w - 16);
+  const homeY = C.FIELD.playerY + (b.id === 'que' ? -26 : b.id === 'gui' ? 14 : 16);
+  const m = st.mods;
+  if (b.id === 'que') {
+    if (p.state === 'home') {
+      moveTo(p, homeX, homeY, 900, dt);
+      p.cd -= dt;
+      if (p.cd <= 0) {
+        const vis = visible(st);
+        const chests = vis.filter((g) => g.chest);
+        // 先挑最靠前的机关匣；没有就挑最硬的那节
+        const g = chests.length ? chests[0] : vis.reduce((a, o) => (!a || o.hp > a.hp ? o : a), null);
+        if (g) {
+          p.state = 'fly';
+          p.target = g.id;
+          st.events.push({ t: 'palGo', x: p.x, y: p.y });
+        } else p.cd = 0.3;
+      }
+    } else if (p.state === 'fly') {
+      const g = segById(st, p.target);
+      if (!g) p.state = 'back';
+      else if (moveTo(p, g.x, g.y - 12, b.fly, dt)) {
+        p.state = 'peck';
+        p.n = b.pecks;
+        p.t = 0;
+      }
+    } else if (p.state === 'peck') {
+      const g = segById(st, p.target);
+      if (!g) p.state = 'back';
+      else {
+        p.x = g.x;
+        p.y = g.y - 12;
+        p.t -= dt;
+        if (p.t <= 0) {
+          p.t = 0.08;
+          p.n--;
+          st.events.push({ t: 'peck', x: g.x, y: g.y, chest: g.chest });
+          damage(st, g, m.base * b.peckDmg * (g.chest ? b.chestMul : 1), g.x, g.y - 6, false);
+          if (p.n <= 0) p.state = 'back';
+        }
+      }
+    } else if (p.state === 'back') {
+      if (moveTo(p, homeX, homeY, b.fly, dt)) {
+        p.state = 'home';
+        p.cd = b.cd;
+      }
+    }
+  } else if (b.id === 'quan') {
+    if (p.state === 'home') {
+      p.x = homeX;
+      p.y = homeY;
+      p.cd -= dt;
+      const g = st.segs[0];
+      if (p.cd <= 0 && g && g.s >= 0 && g.y > 60) {
+        p.state = 'leap';
+        p.t = 0;
+        p.sx = p.x;
+        p.sy = p.y;
+        st.events.push({ t: 'palGo', x: p.x, y: p.y });
+      }
+    } else if (p.state === 'leap' || p.state === 'back') {
+      const T = 0.32;
+      p.t += dt;
+      const u = Math.min(1, p.t / T);
+      const g = st.segs[0];
+      // 往前扑：落点跟着龙头；跳回来：落回阿铸身边
+      const tx = p.state === 'leap' ? (g ? g.x : p.sx) : homeX;
+      const ty = p.state === 'leap' ? (g ? g.y : p.sy) : homeY;
+      p.x = p.sx + (tx - p.sx) * u;
+      p.y = p.sy + (ty - p.sy) * u - Math.sin(u * Math.PI) * 70;
+      p.fx = tx < p.sx ? -1 : 1;
+      if (u >= 1) {
+        if (p.state === 'leap') {
+          if (g) {
+            const push = b.push * C.DRAGON.gap;
+            st.events.push({ t: 'bite', x: g.x, y: g.y });
+            damage(st, g, m.base * b.biteDmg, g.x, g.y, false);
+            for (const o of st.segs) o.s -= push;
+            placeSegs(st);
+          }
+          p.state = 'back';
+          p.t = 0;
+          p.sx = p.x;
+          p.sy = p.y;
+        } else {
+          p.state = 'home';
+          p.cd = b.cd;
+        }
+      }
+    }
+  } else if (b.id === 'gui') {
+    p.x = homeX;
+    p.y = homeY;
+    p.cd -= dt;
+    if (p.recoil > 0) p.recoil -= dt;
+    if (p.cd <= 0) {
+      // 往龙最密的地方打；一样密就打离城门近的
+      const vis = visible(st);
+      let best = null;
+      let bestN = 0;
+      for (const g of vis) {
+        let n = 0;
+        for (const o of vis) if (Math.hypot(o.x - g.x, o.y - g.y) < b.shellR) n++;
+        if (n > bestN || (n === bestN && best && g.s > best.s)) {
+          best = g;
+          bestN = n;
+        }
+      }
+      if (best) {
+        st.shells.push({ x0: p.x, y0: p.y - 14, tx: best.x, ty: best.y, target: best.id, t: 0, T: b.flight });
+        st.events.push({ t: 'mortar', x: p.x, y: p.y - 14 });
+        p.cd = b.cd;
+        p.recoil = 0.25;
+      } else p.cd = 0.3;
+    }
+  }
+  // 炮弹：飞的时候跟着目标那节（打不空）
+  for (let i = st.shells.length - 1; i >= 0; i--) {
+    const sh = st.shells[i];
+    sh.t += dt;
+    const g = segById(st, sh.target);
+    if (g) {
+      sh.tx = g.x;
+      sh.ty = g.y;
+    }
+    if (sh.t >= sh.T) {
+      st.shells.splice(i, 1);
+      st.events.push({ t: 'shell', x: sh.tx, y: sh.ty, r: b.shellR });
+      st.slowT = b.slowSec;
+      const near = st.segs.filter((o) => o.s >= 0 && Math.hypot(o.x - sh.tx, o.y - sh.ty) < b.shellR);
+      for (const o of near) damage(st, o, m.base * b.shellDmg, o.x, o.y, false);
+    }
+  }
 }
 
 function openCards(st) {

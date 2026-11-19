@@ -29,7 +29,7 @@ const BOW = {
 const LEVELS = [
   // 数值由 test/measure.js 模拟玩家连玩 15 局调出来（2026-11-19）：第 1 关发呆也能过；第 2 关第一次普通玩家赢四成
   { rows: 4, n: 24, hp: 70, growth: 1.2, chests: 5, v: 6.8, accel: 0.004 },
-  { rows: 5, n: 40, hp: 265, growth: 4.0, chests: 6, v: 7.7, accel: 0.004 },
+  { rows: 5, n: 40, hp: 300, growth: 4.0, chests: 6, v: 7.7, accel: 0.004 },
   { rows: 5, n: 46, hp: 240, growth: 4.5, chests: 7, v: 8.2, accel: 0.0045 },
   { rows: 5, n: 52, hp: 245, growth: 5.0, chests: 7, v: 8.7, accel: 0.005 },
   { rows: 6, n: 58, hp: 295, growth: 5.5, chests: 8, v: 8.7, accel: 0.005 },
@@ -54,11 +54,18 @@ const SKILLS = [
   { id: 'crit', name: '会心', max: 3, color: '#fff27a' },
 ];
 
-// 机关伙伴：带一只上城墙。prefer = 这只让哪个技能出得更勤（权重 ×4），而且这个技能变得更强
+// 机关伙伴：带一只上城墙，三只的打法完全不一样（2026-11-19 0.2：Cc 说看不出区别，改成各自动手）
+// 三只强度调到差不多（test/measure.js + 分关对比），区别在打法不在强弱。伤害都按「弩机一箭」的倍数算，所以升级弩机伙伴也跟着变强。prefer = 三选一里这张卡出得更勤
 const BUDDIES = [
-  { id: 'que', name: '铜雀', prefer: 'multi', unlockLevel: 0, note: '多发每级多两箭' },
-  { id: 'quan', name: '木犬', prefer: 'bounce', unlockLevel: 1, note: '弹过墙的箭伤害翻倍' },
-  { id: 'gui', name: '蒸汽龟', prefer: 'blast', unlockLevel: 3, note: '一开局就会炸开，炸得更大' },
+  // 铜雀：飞出去啄，专挑机关匣（没有匣子就啄最硬的那节）→ 匣子开得快，技能来得多
+  { id: 'que', name: '铜雀', prefer: 'multi', unlockLevel: 0, note: '飞去啄机关匣，技能来得快',
+    cd: 2.0, pecks: 5, peckDmg: 3.0, chestMul: 1.3, fly: 520 },
+  // 木犬：扑上龙头咬一大口，整条龙往后退 → 救急
+  { id: 'quan', name: '木犬', prefer: 'bounce', unlockLevel: 1, note: '扑咬龙头，整条龙往后退',
+    cd: 3.2, biteDmg: 34, push: 0.45 },
+  // 蒸汽龟：往龙最密的地方抛炮弹，炸一大片，留一团蒸汽让龙变慢 → 清场
+  { id: 'gui', name: '蒸汽龟', prefer: 'blast', unlockLevel: 3, note: '抛炮弹炸一片，蒸汽让龙变慢',
+    cd: 3.5, shellDmg: 4.4, shellR: 62, flight: 0.7, slow: 0.75, slowSec: 1.2 },
 ];
 
 // 弩机升级（金币买）：每级伤害 +12%
