@@ -131,6 +131,6 @@ function isNearMiss(left, total) {
 }
 
 // 生图（原型/素材/ 里的文件）：有了就加进来，没有的不要写（读不到会报错）
-const ASSETS = [];
+const ASSETS = ['bg_city.jpg', 'bg_tomb.jpg', 'bg_pit.jpg', 'hero.png']; // 2026-11-20 Midjourney 第 1 批（风格：祝有好收获）
 
 module.exports = { ASSETS, FIELD, DRAGON, BOW, CHAPTERS, LEVELS, level, chapterOf, TYPES, TYPE_RULE, WEAPONS, MAX_WEAPONS, BUDDIES, UPGRADE, GOLD, AD, isNearMiss };

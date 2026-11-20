@@ -1177,6 +1177,29 @@ function drawHero(ctx, x, y, t, recoil, moving, lv) {
   ctx.fill();
   ctx.restore();
   const yy = y + bob;
+  // 生图到了：用 Midjourney 画的阿铸（只画到腰，下半身被墙挡住）
+  if (imgOk('hero')) {
+    const im = IMG.hero;
+    const hgt = 104;
+    const wid = (im.width / im.height) * hgt;
+    if (lv >= 5) {
+      ctx.globalAlpha = 0.25 + 0.15 * Math.sin(t * 8);
+      ctx.fillStyle = lv >= 8 ? '#ff5a3a' : '#ffb347';
+      ctx.beginPath();
+      ctx.arc(x, yy - 40, 30, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+    const top = yy - 74 + recoil * 3;
+    ctx.drawImage(im, x - wid / 2, top, wid, hgt);
+    if (recoil > 0.55) {
+      ctx.globalAlpha = (recoil - 0.55) / 0.45;
+      ctx.fillStyle = '#fff2b0';
+      star(ctx, x - wid * 0.12, top + 2, 7 + lv * 0.6, 3, 6);
+      ctx.globalAlpha = 1;
+    }
+    return;
+  }
   const ol = (fn) => {
     ctx.fillStyle = LINE;
     fn(1.4);
@@ -1512,7 +1535,8 @@ function drawScene(ctx, st) {
     const im = IMG['bg_' + ch.id];
     const sc = Math.max(F.w / im.width, F.h / im.height);
     ctx.drawImage(im, (F.w - im.width * sc) / 2, (F.h - im.height * sc) / 2, im.width * sc, im.height * sc);
-    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    // 压一层暗色：背景退后，龙和路跳出来（地宫那张细节多，压得重一点）
+    ctx.fillStyle = 'rgba(0,0,0,' + (ch.id === 'pit' ? 0.4 : 0.28) + ')';
     ctx.fillRect(0, 0, F.w, F.h);
   } else if (ch.id === 'city') {
     // 远处城楼、宝塔、蒸汽烟囱（剪影两层，远浅近深）
