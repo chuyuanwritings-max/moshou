@@ -1,4 +1,4 @@
-// 《墨守》（打龙塔防，暂名）原型 0.2 · 主程序：画面切换、手指、局外（金币 / 弩机 / 机关伙伴）、特效和声音。
+// 《墨守》（打龙塔防，暂名）原型 0.3 · 主程序：画面切换、手指、局外（金币 / 弩机 / 机关伙伴）、特效和声音。
 // 规则在 sim.js，画法在 draw.js，平台差别只在 platform.js。
 const PF = require('./platform.js');
 const C = require('./config.js');
@@ -62,7 +62,10 @@ function snd(name, gapMs, vol, rate) {
 function startRun() {
   const seed = ((PF.now() % 1000000007) ^ (meta.runs * 2654435761)) >>> 0;
   G.st = S.newRun(meta.level, meta, seed || 1);
+  G.st.phasedOf = (g) => S.phased(G.st, g);
   G.bg = makeBg(G.st);
+  G.typeShow = null;
+  G.evoShow = null;
   G.mode = 'play';
   G.result = null;
   G.fx.length = 0;
@@ -82,6 +85,13 @@ function startRun() {
   saveMeta();
 }
 
+// 生图到了以后：把文件名加进 config.js 的 ASSETS（例：'bg_city.jpg'），放进 原型/素材/
+const IMGS = (C.ASSETS || []).map((f) => {
+  const k = f.replace(/\.[a-z]+$/, '');
+  D.IMG[k] = PF.loadImage('素材/' + f);
+  return k;
+});
+let imgsReady = 0;
 function st0Buddy() {
   return G.st && G.st.buddy;
 }
@@ -90,7 +100,7 @@ function makeBg(st) {
   const c = PF.createOffscreen(Math.ceil(F.w * k), Math.ceil(F.h * k));
   const x = c.getContext('2d');
   x.setTransform(k, 0, 0, k, 0, 0);
-  D.drawBackground(x, st.path, st.level);
+  D.drawScene(x, st);
   return c;
 }
 
@@ -198,6 +208,22 @@ function handleEvents(st) {
         break;
       case 'hit': {
         const heavy = st.mods.tier >= 4;
+        // 打在盾上 / 重甲上：灰火花「挡」；用对了武器：黄字「克！」
+        if (e.resist || e.weak) {
+          const now = PF.now();
+          const key = e.resist ? 'resAt' : 'weakAt';
+          if (!G[key] || now - G[key] > (e.resist ? 350 : 250)) {
+            G[key] = now;
+            if (e.resist) {
+              text(e.x, e.y - 12, e.type === 'shield' ? '挡' : '硬', 13, '#b8c0cc', 0.4);
+              snd('clang', 90, 0.4);
+            } else text(e.x, e.y - 16, '克！' + e.dmg, 15, '#ffcf4a', 0.55);
+          }
+          if (e.resist) {
+            if (roomFor(3)) sparks(e.x, e.y + 8, 1, '#c8d0dc', 0.5);
+            break;
+          }
+        }
         if (e.crit) {
           const now = PF.now();
           if (!G.critTextAt || now - G.critTextAt > 160) {
@@ -294,14 +320,91 @@ function handleEvents(st) {
         snd('combo');
         break;
       case 'pick': {
-        snd('pick');
-        const sk = C.SKILLS.find((k) => k.id === e.id);
-        ring(st.px, F.playerY - 14, 40, sk.color, 0.4, 5);
-        pop(st.px, F.playerY - 14, 30, sk.color, 0.15);
-        text(st.px, F.playerY - 60, sk.name + ' +1', 20, sk.color, 0.9);
-        sparks(st.px, F.playerY - 14, 10, sk.color);
+        const w = S.W[e.id];
+        ring(st.px, F.playerY - 14, 40, w.color, 0.4, 5);
+        pop(st.px, F.playerY - 14, 30, w.color, 0.15);
+        sparks(st.px, F.playerY - 14, 10, w.color);
+        if (e.lv >= 5) {
+          // 进化：一局里最爽的那一下
+          snd('evolve');
+          G.flash = 0.4;
+          G.flashColor = '#fff3d0';
+          G.shake = 8;
+          G.hitstop = Math.max(G.hitstop, 0.15);
+          G.evoShow = { id: e.id, t: 1.6 };
+          for (let k = 0; k < 4; k++) ring(st.px, F.playerY - 14, 50 + k * 30, w.color, 0.5 + k * 0.1, 6);
+          sparks(st.px, F.playerY - 14, 24, w.color, 1.4);
+          PF.vibrate(true);
+        } else {
+          snd('pick');
+          text(st.px, F.playerY - 60, w.name + (e.lv > 1 ? ' Lv' + e.lv : ' 到手'), 20, w.color, 0.9);
+        }
         break;
       }
+      case 'phase': {
+        const now = PF.now();
+        if (!G.phaseAt || now - G.phaseAt > 400) {
+          G.phaseAt = now;
+          text(e.x, e.y - 12, '虚', 14, '#9fd6ec', 0.45);
+        }
+        break;
+      }
+      case 'powder':
+        boom(e.x, e.y, e.r, true);
+        G.shake = Math.max(G.shake, 7);
+        G.hitstop = Math.max(G.hitstop, 0.05);
+        snd('boom', 60, 0.7);
+        text(e.x, e.y - 24, '轰！', 20, '#ffb347', 0.7);
+        break;
+      case 'split':
+        shards(e.x, e.y, 10, '#8fffb0');
+        text(e.x, e.y - 20, '裂！', 16, '#8fffb0', 0.6);
+        snd('crit', 60, 0.5);
+        break;
+      case 'regen':
+        text(e.x + 10, e.y - 10, '+', 16, '#7dff9a', 0.5);
+        break;
+      case 'newType':
+        G.typeShow = { type: e.type, t: 3.2 };
+        snd('alarm', 300, 0.25);
+        break;
+      case 'bladeThrow':
+        snd('whoosh', 120, 0.45);
+        break;
+      case 'potThrow':
+        snd('mortar', 120, 0.5);
+        break;
+      case 'potBoom':
+        boom(e.x, e.y, e.r, false);
+        G.shake = Math.max(G.shake, 4);
+        snd('blast', 70, 0.6);
+        break;
+      case 'chain':
+        G.fx.push({ k: 'bolt', pts: e.pts, life: 0.22, max: 0.22, evo: e.evo, seed: Math.random() * 100 });
+        for (const q of e.pts.slice(1)) sparks(q.x, q.y, 2, '#d8ecff', 0.6);
+        snd('zap', 80, 0.5);
+        break;
+      case 'frost':
+        for (const q of e.pts) {
+          ring(q.x, q.y, 24, '#d8ecff', 0.35, 4);
+          sparks(q.x, q.y, 2, '#ffffff', 0.5);
+        }
+        if (e.evo) {
+          G.flash = 0.25;
+          G.flashColor = '#d8ecff';
+          text(F.w / 2, 300, '冰封！', 30, '#d8ecff', 1);
+        }
+        snd('freeze', 100, 0.55);
+        break;
+      case 'hammer':
+        G.shake = Math.max(G.shake, e.push ? 9 : 5);
+        G.hitstop = Math.max(G.hitstop, 0.05);
+        ring(e.x, e.y, 40, '#ffe1a0', 0.3, 7);
+        pop(e.x, e.y, 26, '#fff7e0', 0.1);
+        if (roomFor(12)) chunks(e.x, e.y, 3, [D.P.brass, '#7F602C', '#6b5a48']);
+        snd('thud', 60, 0.8);
+        PF.vibrate(false);
+        break;
       case 'lever':
         snd('alarm');
         PF.vibrate(true);
@@ -509,6 +612,27 @@ function drawFx() {
       ctx.arc(p.x + Math.sin(G.t * 2 + p.ph) * 4, p.y + Math.cos(G.t * 1.7 + p.ph) * 3, p.s, 0, Math.PI * 2);
       ctx.fill();
       ctx.globalAlpha = 1;
+    } else if (p.k === 'bolt') {
+      // 雷链：一段段折线，白芯蓝边
+      let sd = p.seed;
+      const rnd = () => ((sd = (sd * 9301 + 49297) % 233280) / 233280 - 0.5);
+      for (const [w, c] of [[5, 'rgba(120,170,255,' + (k * 0.8).toFixed(2) + ')'], [2, 'rgba(255,255,255,' + k.toFixed(2) + ')']]) {
+        ctx.strokeStyle = c;
+        ctx.lineWidth = w;
+        ctx.beginPath();
+        ctx.moveTo(p.pts[0].x, p.pts[0].y);
+        sd = p.seed;
+        for (let i = 1; i < p.pts.length; i++) {
+          const a = p.pts[i - 1];
+          const b = p.pts[i];
+          for (let j = 1; j <= 3; j++) {
+            const u = j / 3;
+            const jit = j < 3 ? 9 : 0;
+            ctx.lineTo(a.x + (b.x - a.x) * u + rnd() * jit, a.y + (b.y - a.y) * u + rnd() * jit);
+          }
+        }
+        ctx.stroke();
+      }
     } else if (p.k === 'chomp') {
       // 木犬咬下去：上下两排牙合上
       const u = 1 - k;
@@ -621,18 +745,72 @@ function drawHud(st) {
   coinIcon(0, 0, 8);
   ctx.restore();
   bigText(ctx, '' + (meta.gold + st.gold), F.w - 50, 21, 15 * (1 + (G.goldBump || 0) * 0.15), D.P.gold, D.P.line, 'left');
-  // 已经拿到的技能
-  let ix = 14;
-  for (const s of C.SKILLS) {
-    const lv = st.skills[s.id];
+  // 带着的武器（最多 4 件），右下角写等级，进化了加金框
+  let ix = 20;
+  for (const w of C.WEAPONS) {
+    const lv = st.weapons[w.id];
     if (!lv) continue;
-    ctx.fillStyle = 'rgba(20,12,10,0.6)';
-    roundRect(ctx, ix - 11, 40, 22, 22, 5);
+    ctx.fillStyle = 'rgba(20,12,10,0.65)';
+    roundRect(ctx, ix - 14, 40, 28, 28, 6);
     ctx.fill();
-    D.drawIcon(ctx, s.id, ix, 51, 16);
-    if (lv > 1) bigText(ctx, '' + lv, ix + 9, 60, 9, '#fffaf0');
-    ix += 26;
+    if (lv >= 5) {
+      ctx.strokeStyle = D.P.gold;
+      ctx.lineWidth = 2;
+      roundRect(ctx, ix - 14, 40, 28, 28, 6);
+      ctx.stroke();
+    }
+    D.drawWeaponIcon(ctx, w.id, ix, 54, 20);
+    bigText(ctx, lv >= 5 ? '★' : '' + lv, ix + 10, 64, 9, lv >= 5 ? D.P.gold : '#fffaf0');
+    ix += 32;
   }
+}
+
+// 第一次看见一个兵种：上方弹一张小牌「铜盾节 箭打不动 · 克：回旋刃 雷链 …」，不停游戏
+function drawTypeShow(st) {
+  const ts = G.typeShow;
+  const T = C.TYPES[ts.type];
+  const k = Math.min(1, ts.t * 2, (3.2 - ts.t) * 5);
+  ctx.save();
+  ctx.globalAlpha = Math.max(0, k);
+  const y = 96;
+  ctx.fillStyle = 'rgba(20,12,10,0.88)';
+  roundRect(ctx, 20, y, F.w - 40, 58, 10);
+  ctx.fill();
+  ctx.strokeStyle = D.P.gold;
+  ctx.lineWidth = 1.5;
+  roundRect(ctx, 20, y, F.w - 40, 58, 10);
+  ctx.stroke();
+  D.drawTypeIcon(ctx, ts.type, 48, y + 29, 30, st);
+  bigText(ctx, T.name, 74, y + 18, 16, D.P.gold, D.P.line, 'left');
+  bigText(ctx, T.tip, 74, y + 40, 13, '#fffaf0', D.P.line, 'left');
+  if (T.fear.length) {
+    bigText(ctx, '克', 238, y + 29, 14, '#ff9a6a', D.P.line, 'left');
+    T.fear.slice(0, 3).forEach((id, i) => D.drawWeaponIcon(ctx, id, 266 + i * 24, y + 29, 20));
+  }
+  ctx.restore();
+}
+
+// 进化：中间一张大图标 + 新名字
+function drawEvoShow() {
+  const e = G.evoShow;
+  const w = S.W[e.id];
+  const u = 1.6 - e.t;
+  const sc = easeOutBack(clamp(u / 0.25, 0, 1));
+  ctx.save();
+  ctx.globalAlpha = Math.min(1, e.t * 2);
+  ctx.translate(F.w / 2, 300);
+  ctx.save();
+  ctx.rotate(G.t * 1.5);
+  ctx.fillStyle = 'rgba(255,214,90,0.3)';
+  D.star(ctx, 0, 0, 100, 34, 14);
+  ctx.restore();
+  ctx.scale(sc, sc);
+  D.drawWeaponIcon(ctx, e.id, 0, 0, 90);
+  ctx.restore();
+  ctx.save();
+  ctx.globalAlpha = Math.min(1, e.t * 2);
+  bigText(ctx, '进化！' + w.evo, F.w / 2, 380, 30, D.P.gold);
+  ctx.restore();
 }
 
 function drawLever(st) {
@@ -654,24 +832,31 @@ function drawLever(st) {
   button('lever', x - 66, y - 30, 132, 60, '拉总闸', { pop: pulse, size: 20, icon: 'ad' });
 }
 
+function wrapText(str, n) {
+  const out = [];
+  for (let i = 0; i < str.length; i += n) out.push(str.slice(i, i + n));
+  return out;
+}
 function drawCards(st) {
-  ctx.fillStyle = 'rgba(10,6,5,0.72)';
+  ctx.fillStyle = 'rgba(10,6,5,0.76)';
   ctx.fillRect(-50, -50, F.w + 100, F.h + 100);
   const t = (PF.now() - G.cardsAt) / 1000;
-  // 开了的机关匣
   ctx.save();
-  ctx.translate(F.w / 2, 205);
+  ctx.translate(F.w / 2, 190);
   ctx.rotate(G.t * 0.8);
   ctx.fillStyle = 'rgba(255,214,90,0.25)';
   D.star(ctx, 0, 0, 70, 20, 12);
   ctx.restore();
-  bigText(ctx, '选一个', F.w / 2, 205, 26, D.P.gold);
-  const cw = 104;
-  const ch = 150;
+  bigText(ctx, '选一个', F.w / 2, 190, 26, D.P.gold);
+  const cw = 108;
+  const ch = 210;
   st.cards.forEach((id, i) => {
-    const s = C.SKILLS.find((k) => k.id === id);
-    const x = 14 + i * (cw + 12);
-    const y = 260;
+    const w = S.W[id];
+    const cur = st.weapons[id] || 0;
+    const next = cur + 1;
+    const evo = next >= 5;
+    const x = 9 + i * (cw + 9);
+    const y = 236;
     const pop = easeOutBack(clamp((t - i * 0.07) / 0.22, 0, 1));
     G.buttons.push({ id: 'card' + i, x, y, w: cw, h: ch });
     ctx.save();
@@ -681,27 +866,33 @@ function drawCards(st) {
     ctx.fillStyle = D.P.line;
     roundRect(ctx, -cw / 2 - 3, -ch / 2 - 3, cw + 6, ch + 8, 12);
     ctx.fill();
-    ctx.fillStyle = '#3b2a22';
+    ctx.fillStyle = evo ? '#5a3f1a' : '#3b2a22';
     roundRect(ctx, -cw / 2, -ch / 2, cw, ch, 10);
     ctx.fill();
-    ctx.fillStyle = pref ? D.P.gold : s.color;
+    if (evo) {
+      ctx.strokeStyle = D.P.gold;
+      ctx.lineWidth = 2.5;
+      roundRect(ctx, -cw / 2 + 2, -ch / 2 + 2, cw - 4, ch - 4, 9);
+      ctx.stroke();
+    }
+    ctx.fillStyle = w.color;
     ctx.fillRect(-cw / 2 + 6, -ch / 2 + 6, cw - 12, 4);
+    // 新 / Lv
+    bigText(ctx, cur ? (evo ? '进化' : 'Lv' + cur + '→' + next) : '新！', 0, -ch / 2 + 22, 13, cur ? (evo ? D.P.gold : '#cbb8a8') : '#7dff9a');
     ctx.fillStyle = 'rgba(0,0,0,0.25)';
-    roundRect(ctx, -34, -ch / 2 + 18, 68, 68, 10);
+    roundRect(ctx, -32, -ch / 2 + 32, 64, 60, 10);
     ctx.fill();
-    D.drawIcon(ctx, id, 0, -ch / 2 + 52, 52);
-    bigText(ctx, s.name, 0, 30, 22, '#fffaf0');
-    // 等级小格
-    const lv = st.skills[id];
-    for (let k = 0; k < s.max; k++) {
-      ctx.fillStyle = D.P.line;
-      ctx.fillRect(-s.max * 7 + k * 14, 50, 11, 9);
-      ctx.fillStyle = k < lv ? s.color : k === lv ? '#fffaf0' : '#5a4b44';
-      ctx.fillRect(-s.max * 7 + k * 14 + 1.5, 51.5, 8, 6);
+    D.drawWeaponIcon(ctx, id, 0, -ch / 2 + 62, 48);
+    bigText(ctx, evo ? w.evo : w.name, 0, -ch / 2 + 110, 20, evo ? D.P.gold : '#fffaf0');
+    // 这一级干什么（两三行）
+    wrapText(w.lvDesc[next - 1], 7).slice(0, 3).forEach((ln, k) => bigText(ctx, ln, 0, -ch / 2 + 134 + k * 16, 12, '#e9dccb'));
+    // 克哪些兵种（只标这一关会出的）
+    const cs = S.counters(st, id);
+    if (cs.length) {
+      bigText(ctx, '克', -cw / 2 + 16, ch / 2 - 18, 13, '#ff9a6a');
+      cs.slice(0, 3).forEach((tp, k) => D.drawTypeIcon(ctx, tp, -cw / 2 + 38 + k * 24, ch / 2 - 18, 18, st));
     }
-    if (pref) {
-      D.drawBuddy(ctx, st.buddy.id, cw / 2 - 12, -ch / 2 + 14, G.t, 0.9);
-    }
+    if (pref) D.drawBuddy(ctx, st.buddy.id, cw / 2 - 12, -ch / 2 + 16, G.t, 0.9);
     ctx.restore();
   });
 }
@@ -1036,6 +1227,12 @@ function frame() {
     saveMeta();
   }
   stepFx(dt);
+  // 图片读完了：重画一次背景
+  const nReady = IMGS.filter((k) => D.IMG[k].ok).length;
+  if (nReady !== imgsReady) {
+    imgsReady = nReady;
+    if (G.st) G.bg = makeBg(G.st);
+  }
   G.recoil = Math.max(0, G.recoil - dt * 12);
   G.shake = Math.max(0, G.shake - dt * 30);
   G.flash = Math.max(0, G.flash - dt);
@@ -1046,6 +1243,8 @@ function frame() {
   }
   G.goldBump = Math.max(0, (G.goldBump || 0) - dt * 5);
   G.upShow = Math.max(0, (G.upShow || 0) - dt);
+  if (G.typeShow) G.typeShow.t -= G.st && G.st.mode === 'play' ? dt : 0;
+  if (G.evoShow) G.evoShow.t -= dt;
 
   render(dt);
   PF.nextFrame(frame);
@@ -1073,11 +1272,17 @@ function render() {
   if (st.danger > 0) {
     ctx.globalAlpha = st.danger * (0.5 + 0.5 * Math.sin(G.t * 12));
     ctx.fillStyle = '#ff3b2f';
-    roundRect(ctx, F.w / 2 - 20, F.gateY - 26, 40, 66, 18);
+    const gl = st.path.goal;
+    if (gl.y > F.gateY - 40) roundRect(ctx, gl.x - 20, F.gateY - 26, 40, 66, 18);
+    else {
+      ctx.beginPath();
+      ctx.arc(gl.x, gl.y, 30, 0, Math.PI * 2);
+    }
     ctx.fill();
     ctx.globalAlpha = 1;
   }
-  D.drawDragon(ctx, st, G.t);
+  D.drawDragonAll(ctx, st, G.t);
+  D.drawWeapons(ctx, st, G.t);
   // 蒸汽龟的蒸汽罩着时：整条龙蒙一层白汽（看得出变慢了）
   if (st.slowT > 0) {
     ctx.globalAlpha = Math.min(1, st.slowT) * 0.18;
@@ -1097,16 +1302,16 @@ function render() {
     ctx.fill();
     ctx.globalAlpha = 1;
   }
-  D.drawPlayer(ctx, st.px, F.playerY, G.t, G.recoil, moving, st.bowLv);
+  D.drawHero(ctx, st.px, F.playerY, G.t, G.recoil, moving, st.bowLv);
   D.drawPal(ctx, st, G.t);
   D.drawShells(ctx, st, G.t);
   drawFx();
-  if (G.bowShow > 0 && G.mode === 'play') {
+  if (G.bowShow > 0 && G.banner <= 0 && G.mode === 'play') {
     ctx.globalAlpha = Math.min(1, G.bowShow * 2);
     bigText(ctx, '弩机 Lv.' + st.bowLv, st.px, F.playerY - 74 - (1.8 - G.bowShow) * 8, 18, D.P.gold);
     ctx.globalAlpha = 1;
   }
-  if (G.palShow > 0 && G.mode === 'play' && st.pal) {
+  if (G.palShow > 0 && G.banner <= 0 && G.mode === 'play' && st.pal) {
     ctx.globalAlpha = Math.min(1, G.palShow * 2);
     bigText(ctx, st.buddy.name + ' 上城墙！', F.w / 2, 380, 22, '#fffaf0');
     bigText(ctx, st.buddy.note, F.w / 2, 406, 14, D.P.gold);
@@ -1130,11 +1335,14 @@ function render() {
     ctx.globalAlpha = Math.min(1, k * 2.5);
     ctx.translate(F.w / 2, 330);
     ctx.scale(pop, pop);
-    bigText(ctx, '第' + (st.level + 1) + '关', 0, 0, 40, D.P.gold);
+    bigText(ctx, '第' + (st.level + 1) + '关 · ' + st.ch.name, 0, 0, 34, D.P.gold);
+    bigText(ctx, st.ch.foe + '来了', 0, 34, 15, '#fffaf0');
     ctx.restore();
     ctx.globalAlpha = 1;
   }
   if (G.mode === 'play' && st.mode === 'play' && st.lever.offer > 0) drawLever(st);
+  if (G.typeShow && G.typeShow.t > 0 && G.mode === 'play' && st.mode === 'play') drawTypeShow(st);
+  if (G.evoShow && G.evoShow.t > 0 && G.mode === 'play') drawEvoShow();
   if (G.mode === 'play' && st.mode === 'cards') drawCards(st);
   if (G.mode === 'result') drawResult();
   if (G.mode === 'result' && G.upShow > 0) drawUpgradeShow();

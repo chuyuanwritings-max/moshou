@@ -84,9 +84,9 @@ const fs = require('fs');
   await setBot(null, 1, false);
   await page.waitForTimeout(400);
   await snap('02_三选一');
-  const before = await g(() => Object.values(__moshou.G.st.skills).reduce((a, b) => a + b, 0));
+  const before = await g(() => Object.values(__moshou.G.st.weapons).reduce((a, b) => a + b, 0));
   await clickBtn('card1');
-  check((await g(() => Object.values(__moshou.G.st.skills).reduce((a, b) => a + b, 0))) === before + 1, '点中间那张卡，拿到一个技能');
+  check((await g(() => Object.values(__moshou.G.st.weapons).reduce((a, b) => a + b, 0))) === before + 1, '点中间那张卡，拿到一件武器或升一级');
   check((await g(() => __moshou.G.st.mode)) === 'play', '选完马上接着打');
 
   console.log('—— 打完第一关 ——');

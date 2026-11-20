@@ -4,13 +4,52 @@ const { FIELD } = require('./config.js');
 
 const STEP = 2; // 每 2 像素存一个点
 
-function build(rows, startLeft) {
+// 三种路（0.3）：snake = 边城，横着来回 → 城门；spiral = 古墓，方形回旋一圈圈往里 → 中间的墓室；
+// columns = 兵马俑地宫，竖着上下穿俑坑 → 右下角的地宫闸门
+function corners(kind, rows, startLeft) {
   const top = 96;
   const bottom = 524;
   const xl = 46;
   const xr = FIELD.w - 46;
-  const gap = rows > 1 ? (bottom - top) / (rows - 1) : 0;
   const pts = [];
+  if (kind === 'spiral') {
+    // 从左上进，顺着左边下来，绕一圈圈往里，最后停在墓室
+    const d = 56;
+    let L = xl, R = xr, T = top, B = bottom;
+    pts.push([L, -60]);
+    pts.push([L, B]);
+    for (let k = 0; k < rows; k++) {
+      pts.push([R, B]);
+      pts.push([R, T]);
+      L += d;
+      pts.push([L, T]);
+      B -= d;
+      pts.push([L, B]);
+      R -= d;
+      T += d;
+    }
+    // 最后拐进墓室：走在最里一圈的两条边正中间，不贴着别的路
+    const last = pts[pts.length - 1];
+    const cx = (L + R + d) / 2;
+    pts.push([cx, last[1]]);
+    pts.push([cx, (T + B) / 2]);
+    return { pts, rc: 24 };
+  }
+  if (kind === 'columns') {
+    const cols = rows;
+    const gx = (xr - xl) / (cols - 1);
+    pts.push([xl, -60]);
+    for (let i = 0; i < cols; i++) {
+      const x = xl + gx * i;
+      const down = i % 2 === 0;
+      const last = i === cols - 1;
+      pts.push([x, down ? top : bottom]);
+      pts.push([x, down ? (last ? FIELD.gateY - 8 : bottom) : top]);
+    }
+    pts.splice(1, 1); // 第一列直接从上面进来
+    return { pts, rc: Math.min(30, gx / 2 - 2) };
+  }
+  const gap = rows > 1 ? (bottom - top) / (rows - 1) : 0;
   let left = !!startLeft; // 第一行从哪边进来
   pts.push([left ? xl : xr, -60]);
   for (let i = 0; i < rows; i++) {
@@ -21,9 +60,14 @@ function build(rows, startLeft) {
     left = !left;
   }
   pts.push([FIELD.w / 2, FIELD.gateY - 8]);
+  return { pts, rc: Math.min(30, gap / 2 - 2) };
+}
 
+function build(rows, startLeft, kind) {
+  const cs = corners(kind || 'snake', rows, startLeft);
+  const pts = cs.pts;
   // 拐角削成圆角（二次贝塞尔），然后每 STEP 像素取一个点
-  const rc = Math.min(30, gap / 2 - 2);
+  const rc = cs.rc;
   const dense = [];
   const add = (x, y) => {
     const p = dense[dense.length - 1];
@@ -83,7 +127,8 @@ function build(rows, startLeft) {
     const dy = ys[i + 1] - ys[i];
     return { x: xs[i] + dx * t, y: ys[i] + dy * t, a: Math.atan2(dy, dx) };
   }
-  return { len, at, corners: pts, rows };
+  const end = { x: xs[xs.length - 1], y: ys[ys.length - 1] };
+  return { len, at, corners: pts, rows, kind: kind || 'snake', goal: end };
 }
 
 module.exports = { build };

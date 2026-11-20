@@ -176,8 +176,24 @@ function createOffscreen(w, h) {
   return c;
 }
 
+// 读一张图：读到了 im.ok = true；读不到就一直是 false（画面用代码画的顶上）
+function loadImage(src) {
+  let im;
+  try {
+    im = isWx ? wx.createImage() : typeof Image !== 'undefined' ? new Image() : null;
+  } catch (e) {
+    im = null;
+  }
+  if (!im) return { ok: false };
+  im.ok = false;
+  im.onload = () => (im.ok = true);
+  im.onerror = () => (im.ok = false);
+  im.src = src;
+  return im;
+}
+
 function exposeForTest(name, value) {
   if (!isWx && typeof window !== 'undefined') window[name] = value;
 }
 
-module.exports = { isWx, setup, createOffscreen, now, nextFrame, vibrate, showRewardedAd, load, save, exposeForTest, sound, unlockAudio, setMuted };
+module.exports = { isWx, setup, createOffscreen, loadImage, now, nextFrame, vibrate, showRewardedAd, load, save, exposeForTest, sound, unlockAudio, setMuted };
