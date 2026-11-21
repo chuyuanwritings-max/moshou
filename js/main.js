@@ -15,6 +15,7 @@ const saveMeta = () => PF.save(SAVE, meta);
 PF.setMuted(meta.muted);
 
 const SH = require('./shell.js');
+const CS = require('./cs.js');
 const view = SH.view;
 const { ctx, width: W, height: H, dpr } = view;
 const F = C.FIELD;
@@ -67,6 +68,7 @@ function startRun() {
   G.bg = makeBg(G.st);
   G.typeShow = null;
   G.evoShow = null;
+  G.cs = null;
   G.mode = 'play';
   G.result = null;
   G.fx.length = 0;
@@ -337,7 +339,20 @@ function handleEvents(st) {
           G.flashColor = '#fff3d0';
           G.shake = 8;
           G.hitstop = Math.max(G.hitstop, 0.15);
-          G.evoShow = { id: e.id, t: 1.6 };
+          G.cs = CS.evolve(ctx, {
+            name: w.evo,
+            drawOld: (g, x, y) => D.drawWeaponIcon(g, e.id, x, y, 120),
+            drawNew: (g, x, y) => {
+              g.fillStyle = 'rgba(255,214,90,0.35)';
+              g.beginPath();
+              g.arc(x, y, 100, 0, Math.PI * 2);
+              g.fill();
+              D.drawWeaponIcon(g, e.id, x, y, 150);
+            },
+            sfx: (n) => snd(n),
+            onEnd: () => (G.cs = null),
+          });
+          if (G.bot) G.cs.skip();
           for (let k = 0; k < 4; k++) ring(st.px, F.playerY - 14, 50 + k * 30, w.color, 0.5 + k * 0.1, 6);
           sparks(st.px, F.playerY - 14, 24, w.color, 1.4);
           PF.vibrate(true);
@@ -1091,6 +1106,10 @@ function hitButton(fx, fy) {
 }
 function onTouch(type, id, x, y) {
   const [fx, fy] = toField(x, y);
+  if (type === 'down' && G.cs) {
+    G.cs.skip();
+    return;
+  }
   if (type === 'down' && G.intro) {
     endIntro();
     return;
@@ -1311,7 +1330,7 @@ function frame() {
       G.hitstop -= dt;
       break;
     }
-    if (G.intro) break;
+    if (G.intro || G.cs) break;
     if (G.mode === 'play' && st.mode === 'play') {
       if (G.bot) G.targetX = G.bot(st);
       const before = st.mode;
@@ -1342,6 +1361,10 @@ function frame() {
     G.hint = false;
     meta.seenHint = true;
     saveMeta();
+  }
+  if (G.cs) {
+    if (G.bot) G.cs.skip();
+    else G.cs.update(dt * 1000);
   }
   if (G.intro) {
     G.intro.t += dt;
@@ -1467,6 +1490,10 @@ function render() {
   if (G.typeShow && G.typeShow.t > 0 && G.mode === 'play' && st.mode === 'play') drawTypeShow(st);
   if (G.evoShow && G.evoShow.t > 0 && G.mode === 'play') drawEvoShow();
   if (G.intro && G.mode === 'play') drawIntro();
+  if (G.cs) {
+    ctx.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * ox, dpr * oy);
+    G.cs.draw();
+  }
   if (G.mode === 'play' && st.mode === 'cards') drawCards(st);
   if (G.mode === 'result') drawResult();
   if (G.mode === 'result' && G.upShow > 0) drawUpgradeShow();

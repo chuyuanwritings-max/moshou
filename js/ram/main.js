@@ -5,6 +5,8 @@ const C = require('./config.js');
 const S = require('./sim.js');
 const D = require('./draw.js');
 const { clamp, easeOutBack, roundRect, bigText, mix } = require('../util.js');
+const CS = require('../cs.js');
+const BG = { city: PF.loadImage('素材/bg_city.jpg'), tomb: PF.loadImage('素材/bg_tomb.jpg'), pit: PF.loadImage('素材/bg_pit.jpg') };
 
 const SAVE = 'moshou_ram_v1';
 const meta = Object.assign({ coins: 0, startLv: 0, cardLv: 0, partLv: 0, level: 0, best: 0, runs: 0, muted: false, seenHint: false }, PF.load(SAVE) || {});
@@ -46,6 +48,9 @@ const G = {
   evo: null,
   cardRects: [],
   cardsAt: 0,
+  cs: null, // 正在播的过场
+  winCsT: 0,
+  lastCh: -1,
 };
 
 function snd(name, gapMs, vol, rate) {
@@ -69,6 +74,14 @@ function startRun() {
   G.flames.length = 0;
   G.teach = null;
   G.evo = null;
+  G.cs = null;
+  G.winCsT = 0;
+  const ch = S.chapter(G.st);
+  if (G.st.lv.ch !== G.lastCh) {
+    G.lastCh = G.st.lv.ch;
+    G.banner = 0;
+    G.cs = CS.chapter(ctx, { id: ch.id, title: '第' + (G.st.lv.idx + 1) + '关 · ' + ch.name, line: '冲破墨家的城门', img: BG[ch.id], sfx: (n) => snd(n), onEnd: () => ((G.cs = null), (G.banner = 1.6)) });
+  }
 }
 
 // —— 坐标：世界 wy → 屏幕 y ——
@@ -80,6 +93,10 @@ function toField(px, py) {
 }
 function onTouch(type, id, px, py) {
   const [fx, fy] = toField(px, py);
+  if (type === 'down' && G.cs) {
+    G.cs.skip();
+    return;
+  }
   if (type === 'down') {
     if (G.mode === 'result') {
       for (const b of G.buttons) {
@@ -252,7 +269,15 @@ function handleEvents(st) {
     } else if (e.t === 'pick') {
       const car = C.CARS.find((c) => c.id === e.id);
       snd(e.evo ? 'evolve' : 'pick', 0, 0.6);
-      if (e.evo) G.evo = { id: e.id, name: car.evo, t: 0 };
+      if (e.evo) {
+        G.cs = CS.evolve(ctx, {
+          name: car.evo,
+          drawOld: (g, x, y) => D.drawCarIcon(g, e.id, x, y, 4.6, G.t, 2),
+          drawNew: (g, x, y) => D.drawCarIcon(g, e.id, x, y, 4.6, G.t, 3),
+          sfx: (n) => snd(n),
+          onEnd: () => (G.cs = null),
+        });
+      }
       else pop(car.name + (e.lv > 1 ? ' Lv' + e.lv : ''), F.w / 2, C.HEAD_Y - 80, '#ffd65a', 20);
     } else if (e.t === 'fire') {
       G.flames.push({ x: e.x, wy0: e.wy + 14, wy1: e.to, t: 0, lv: e.lv });
@@ -302,7 +327,8 @@ function handleEvents(st) {
       sparks(e.x, y, 10, '#ff9a3a');
     } else if (e.t === 'win') {
       G.mode = 'end';
-      G.endT = 1.2;
+      G.endT = 99;
+      G.winCsT = 0.45;
       snd('win', 0, 0.7);
     } else if (e.t === 'lose') {
       G.mode = 'end';
@@ -314,6 +340,34 @@ function handleEvents(st) {
   }
   st.events.length = 0;
 }
+
+function startVictory() {
+  const boss = st0().gate.boss;
+  G.cs = CS.victory(ctx, {
+    title: boss ? '打倒' + C.BOSSES[boss].name + '！' : '城门破了！',
+    drawHead: (g, x, y, k) => {
+      g.save();
+      g.translate(x, y);
+      g.scale(4.2, 4.2);
+      D.drawHead(g, 0, 6, 0, k === 1 ? 1 : 0, k === 1 ? Math.PI / 56 : 0, 0);
+      if (k === 2) {
+        g.fillStyle = 'rgba(255,80,30,0.55)';
+        g.beginPath();
+        g.arc(-7, 4, 9, 0, Math.PI * 2);
+        g.arc(7, 4, 9, 0, Math.PI * 2);
+        g.fill();
+      }
+      g.restore();
+    },
+    sfx: (n) => snd(n),
+    onEnd: () => {
+      G.cs = null;
+      finish();
+    },
+  });
+  if (G.bot) G.cs.skip();
+}
+const st0 = () => G.st;
 
 function finish() {
   const st = G.st;
@@ -350,6 +404,7 @@ function frame() {
     let n = 0;
     while (acc >= 1 / 60 && n++ < 40) {
       acc -= 1 / 60;
+      if (G.cs) break;
       if (G.mode === 'play') {
         if (G.evo) break;
         if (st.mode === 'cards') {
@@ -367,12 +422,20 @@ function frame() {
     if (G.mode === 'end') {
       G.endT -= dt * G.speed;
       if (G.endT <= 0) finish();
+      if (G.winCsT > 0) {
+        G.winCsT -= dt * G.speed;
+        if (G.winCsT <= 0) startVictory();
+      }
     }
   }
   if (G.bot && G.mode === 'result' && PF.now() - G.resultAt > 300) press('again');
   stepFx(dt);
   if (G.banner > 0) G.banner -= dt;
   if (G.hintT > 0) G.hintT -= dt;
+  if (G.cs) {
+    if (G.bot) G.cs.skip();
+    else G.cs.update(dt * 1000);
+  }
   if (G.teach) {
     G.teach.t += dt;
     if (G.teach.t > 3) G.teach = null;
@@ -437,6 +500,7 @@ function render() {
   ctx.scale(scale, scale);
   drawHud();
   if (G.mode === 'result') drawResult();
+  if (G.cs) G.cs.draw();
   ctx.restore();
 }
 

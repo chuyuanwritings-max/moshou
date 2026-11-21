@@ -714,7 +714,8 @@ function drawSpecialCar(ctx, id, x, y, a, lv, t, armor) {
 }
 
 // 卡片上的小图标
-function drawCarIcon(ctx, id, x, y, k, t) {
+function drawCarIcon(ctx, id, x, y, k, t, lv) {
+  lv = lv || 1;
   ctx.save();
   ctx.translate(x, y);
   ctx.scale(k, k);
@@ -735,7 +736,14 @@ function drawCarIcon(ctx, id, x, y, k, t) {
     ctx.stroke();
   } else {
     drawCar(ctx, 0, 0, 0, 0, t, 0);
-    drawSpecialCar(ctx, id, 0, 0, 0, 1, t, 3);
+    drawSpecialCar(ctx, id, 0, 0, 0, lv, t, 3);
+  }
+  if (lv >= 3) {
+    ctx.strokeStyle = 'rgba(255,214,90,0.9)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(0, -4, 30, 0, Math.PI * 2);
+    ctx.stroke();
   }
   ctx.restore();
 }
