@@ -8,13 +8,14 @@ const { clamp, easeOutBack, roundRect, bigText, mix } = require('./util.js');
 
 const SAVE = 'moshou_v1';
 const meta = Object.assign(
-  { gold: 0, bowLv: 0, buddies: [], buddy: null, level: 0, best: 0, runs: 0, seenHint: false, muted: false },
+  { gold: 0, bowLv: 0, buddies: [], buddy: null, level: 0, best: 0, runs: 0, seenHint: false, muted: false, introSeen: {} },
   PF.load(SAVE) || {}
 );
 const saveMeta = () => PF.save(SAVE, meta);
 PF.setMuted(meta.muted);
 
-const view = PF.setup(onTouch);
+const SH = require('./shell.js');
+const view = SH.view;
 const { ctx, width: W, height: H, dpr } = view;
 const F = C.FIELD;
 const scale = Math.min(W / F.w, H / F.h);
@@ -71,6 +72,10 @@ function startRun() {
   G.fx.length = 0;
   G.targetX = G.st.px;
   G.banner = 1.3;
+  G.wallParts = 0;
+  G.gearFly = [];
+  G.intro = meta.introSeen && meta.introSeen[G.st.ch.id] ? null : { t: 0, id: G.st.ch.id };
+  if (G.intro) G.banner = 0;
   G.hint = meta.level === 0 && !meta.seenHint;
   G.hintMoved = 0;
   G.runStartReal = PF.now();
@@ -248,6 +253,7 @@ function handleEvents(st) {
           sparks(e.x, e.y, 5, '#fff2b0');
         }
         coinFly(e.x, e.y);
+        gearFly(e.x, e.y, e.ram ? 3 : 1);
         G.shake = Math.max(G.shake, e.front ? 3 : 2);
         // 连着碎，声音一下比一下高
         snd('break', 30, 0.6, 1 + (combo - 1) * 0.05);
@@ -995,6 +1001,8 @@ function drawResult() {
     ctx.restore();
   }
 
+  // 右上角：换玩法
+  button('menu', F.w - 100, 14, 88, 34, '换玩法', { size: 14, disabled: !live });
   // 大按钮：再来
   const by = 420;
   button('again', F.w / 2 - 110, by, 220, 66, r.win ? '下一关' : '再守一次', { size: 28, pop: 1 + Math.sin(G.t * 5) * 0.025, disabled: !live });
@@ -1083,6 +1091,10 @@ function hitButton(fx, fy) {
 }
 function onTouch(type, id, x, y) {
   const [fx, fy] = toField(x, y);
+  if (type === 'down' && G.intro) {
+    endIntro();
+    return;
+  }
   if (type === 'down') {
     // 静音按钮（左下角）
     if (fx < 44 && fy > F.h - 44 && G.mode !== 'result') {
@@ -1122,6 +1134,11 @@ function press(id) {
     return;
   }
   if (G.mode !== 'result') return;
+  if (id === 'menu') {
+    snd('tap');
+    SH.go('menu');
+    return;
+  }
   if (id === 'again') {
     snd('tap');
     startRun();
@@ -1180,6 +1197,105 @@ function setTimeoutSafe(fn, ms) {
   if (typeof setTimeout === 'function') setTimeout(fn, ms);
 }
 
+// —— 0.5：打碎的车厢崩出齿轮，飞到城墙上（机关台或者铜甲）——
+function gearFly(x, y, n) {
+  if (!G.gearFly || G.gearFly.length > 40) return;
+  const slots = D.WALL_SLOTS;
+  for (let i = 0; i < n; i++) {
+    const tx = Math.random() < 0.5 ? slots[Math.floor(Math.random() * slots.length)] : 10 + Math.random() * (F.w - 20);
+    G.gearFly.push({ x, y, x0: x, y0: y, tx, ty: F.gateY - 4, t: -i * 0.06, life: 0.55 + Math.random() * 0.2 });
+  }
+}
+function stepGears(dt) {
+  if (!G.gearFly) return;
+  for (let i = G.gearFly.length - 1; i >= 0; i--) {
+    const g = G.gearFly[i];
+    g.t += dt;
+    if (g.t >= g.life) {
+      G.gearFly.splice(i, 1);
+      G.wallParts++;
+      sparks(g.tx, g.ty, 2, '#ffe08a');
+      snd('tap', 40, 0.15, 1.6);
+    }
+  }
+}
+function drawGears() {
+  if (!G.gearFly) return;
+  for (const g of G.gearFly) {
+    if (g.t < 0) continue;
+    const k = g.t / g.life;
+    const x = g.x0 + (g.tx - g.x0) * k;
+    const y = g.y0 + (g.ty - g.y0) * k - Math.sin(k * Math.PI) * 60;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(g.t * 12);
+    ctx.fillStyle = D.P.brassHi;
+    ctx.strokeStyle = D.LINE;
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    for (let i = 0; i < 10; i++) {
+      const a = (i / 10) * Math.PI * 2;
+      const r = i % 2 ? 5 : 3.4;
+      ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+// —— 0.5：每个地方第一次进去，龙先亮相 2 秒 ——
+const INTRO_LINE = { city: '公输家的机关长龙，从沙里钻出来了！', tomb: '盗墓的铁蜈蚣，推开了棺盖！', pit: '地宫里的陶俑，一个个站起来了！' };
+function endIntro() {
+  if (!G.intro) return;
+  meta.introSeen = meta.introSeen || {};
+  meta.introSeen[G.intro.id] = 1;
+  saveMeta();
+  G.intro = null;
+  G.banner = 1.3;
+}
+function drawIntro() {
+  const I = G.intro;
+  const t = I.t;
+  ctx.fillStyle = 'rgba(8,5,3,' + Math.min(0.72, t * 2) + ')';
+  ctx.fillRect(-50, -50, F.w + 100, F.h + 100);
+  const cx = F.w / 2;
+  const groundY = 470;
+  // 地面裂开
+  ctx.strokeStyle = '#2a1a10';
+  ctx.lineWidth = 4;
+  const spread = Math.min(1, t / 0.6);
+  for (let i = 0; i < 7; i++) {
+    const a = (i / 7) * Math.PI - Math.PI;
+    ctx.beginPath();
+    ctx.moveTo(cx, groundY);
+    ctx.lineTo(cx + Math.cos(a) * 150 * spread, groundY + Math.abs(Math.sin(a)) * 30 * spread + 10);
+    ctx.stroke();
+  }
+  // 龙头钻出来，放大三倍
+  const rise = clamp((t - 0.35) / 0.8, 0, 1);
+  const hy = groundY + 40 - rise * 200;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(-50, -50, F.w + 100, groundY + 50);
+  ctx.clip();
+  ctx.translate(cx, hy);
+  ctx.scale(3, 3);
+  ctx.translate(-cx, -hy);
+  const segs = [];
+  for (let k = 3; k >= 1; k--) segs.push({ x: cx + Math.sin(t * 3 + k) * 2, y: hy + 6 + k * 19, a: -Math.PI / 2, r: C.DRAGON.r, id: k, type: null });
+  for (const g of segs) D.drawSegBody(ctx, g, G.t, G.st.ch.enemy);
+  D.drawHeadAll(ctx, G.st, { x: cx, y: hy, a: -Math.PI / 2, r: C.DRAGON.r, id: 0 }, G.t);
+  ctx.restore();
+  // 尘土
+  if (t < 1.2 && Math.random() < 0.6) sparks(cx + (Math.random() - 0.5) * 160, groundY, 1, '#c9a46a');
+  const k = clamp((t - 0.9) / 0.3, 0, 1);
+  bigText(ctx, G.st.ch.name, cx, 120, 30 * k, D.P.gold, D.LINE);
+  bigText(ctx, INTRO_LINE[I.id] || '', cx, 168, 17 * k, '#fff3d8', D.LINE);
+  bigText(ctx, '点一下跳过', cx, 680, 12, '#bfae92', D.LINE);
+}
+
 // —— 每一帧 ——
 let last = PF.now();
 function frame() {
@@ -1195,6 +1311,7 @@ function frame() {
       G.hitstop -= dt;
       break;
     }
+    if (G.intro) break;
     if (G.mode === 'play' && st.mode === 'play') {
       if (G.bot) G.targetX = G.bot(st);
       const before = st.mode;
@@ -1226,6 +1343,11 @@ function frame() {
     meta.seenHint = true;
     saveMeta();
   }
+  if (G.intro) {
+    G.intro.t += dt;
+    if (G.intro.t > 2.3 || G.bot) endIntro();
+  }
+  stepGears(dt);
   stepFx(dt);
   // 图片读完了：重画一次背景
   const nReady = IMGS.filter((k) => D.IMG[k].ok).length;
@@ -1247,7 +1369,6 @@ function frame() {
   if (G.evoShow) G.evoShow.t -= dt;
 
   render(dt);
-  PF.nextFrame(frame);
 }
 
 function render() {
@@ -1283,6 +1404,8 @@ function render() {
   }
   D.drawDragonAll(ctx, st, G.t);
   D.drawWeapons(ctx, st, G.t);
+  D.drawWallMachines(ctx, st, G.t, G.wallParts || 0);
+  drawGears();
   // 蒸汽龟的蒸汽罩着时：整条龙蒙一层白汽（看得出变慢了）
   if (st.slowT > 0) {
     ctx.globalAlpha = Math.min(1, st.slowT) * 0.18;
@@ -1343,6 +1466,7 @@ function render() {
   if (G.mode === 'play' && st.mode === 'play' && st.lever.offer > 0) drawLever(st);
   if (G.typeShow && G.typeShow.t > 0 && G.mode === 'play' && st.mode === 'play') drawTypeShow(st);
   if (G.evoShow && G.evoShow.t > 0 && G.mode === 'play') drawEvoShow();
+  if (G.intro && G.mode === 'play') drawIntro();
   if (G.mode === 'play' && st.mode === 'cards') drawCards(st);
   if (G.mode === 'result') drawResult();
   if (G.mode === 'result' && G.upShow > 0) drawUpgradeShow();
@@ -1377,5 +1501,5 @@ function render() {
 }
 
 startRun();
+SH.register('defend', { onTouch, frame, enter: () => (last = PF.now()) });
 PF.exposeForTest('__moshou', { G, meta, S, C, startRun, press, scale, ox, oy, W, H, saveMeta });
-PF.nextFrame(frame);

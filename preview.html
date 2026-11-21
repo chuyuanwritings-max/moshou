@@ -36,7 +36,8 @@ function __require(from) {
 }
 __def("game.js", function (module, exports, require) {
 // 微信小游戏入口。浏览器预览也从这里进（见 tools/build-preview.js）。
-require('./js/main.js');
+// 先进主页，选 A 机关龙 / B 守城打龙。
+require('./js/menu.js');
 
 });
 __def("js/config.js", function (module, exports, require) {
@@ -1021,6 +1022,192 @@ const FAM = {
   terra: { base: '#a8693f', shade: '#7d4a2b', hi: '#d39a6a' },
 };
 
+// 0.5：边城的机关长龙一节节是蒸汽车厢（和玩法 A 的龙同一套样子）
+function drawCarSeg(ctx, g, t, c) {
+  const R = g.r;
+  const a = (g.a || 0) + Math.PI / 2;
+  ctx.save();
+  ctx.translate(g.x, g.y);
+  ctx.rotate(a);
+  const s = R * 0.92;
+  ctx.fillStyle = 'rgba(20,12,6,0.32)';
+  roundRect(ctx, -s + 3, -s + 4, s * 2, s * 2, 5);
+  ctx.fill();
+  // 轮子
+  ctx.fillStyle = LINE;
+  for (const sx of [-s - 3, s]) {
+    ctx.fillRect(sx, -s * 0.6, 3, s * 0.45);
+    ctx.fillRect(sx, s * 0.2, 3, s * 0.45);
+  }
+  ctx.fillStyle = '#c9933a';
+  ctx.strokeStyle = LINE;
+  ctx.lineWidth = 1.8;
+  roundRect(ctx, -s, -s, s * 2, s * 2, 5);
+  ctx.fill();
+  ctx.fillStyle = '#946224';
+  ctx.fillRect(-s + 2, s - 6, s * 2 - 4, 4);
+  ctx.stroke();
+  ctx.fillStyle = '#6b4518';
+  for (const [px, py] of [[-0.55, -0.55], [0.55, -0.55], [-0.55, 0.45], [0.55, 0.45]]) {
+    ctx.beginPath();
+    ctx.arc(px * s, py * s, 1.8, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  if (g.id % 3 === 1) {
+    ctx.fillStyle = '#4a3220';
+    ctx.fillRect(-3.5, -3.5, 7, 7);
+    ctx.strokeRect(-3.5, -3.5, 7, 7);
+    const k = (t * 1.6 + g.id * 0.37) % 1;
+    ctx.fillStyle = 'rgba(240,236,228,' + (0.5 * (1 - k)) + ')';
+    ctx.beginPath();
+    ctx.arc(0, -4 - k * 10, 3 + k * 4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(-s * 0.62, -s * 0.7);
+  ctx.lineTo(-s * 0.62, 0);
+  ctx.stroke();
+  ctx.restore();
+}
+
+// 0.5：拆来的零件拼到城墙上——每件武器在城墙上立一座看得见的机关台；零件攒多了城墙包铜甲
+const WALL_SLOTS = [44, 110, 250, 316];
+function drawWallMachines(ctx, st, t, parts) {
+  const F = C.FIELD;
+  const wy = F.gateY - 10;
+  // 铜甲：每 6 个零件包一块，最多 12 块
+  const plates = Math.min(12, Math.floor(parts / 6));
+  for (let i = 0; i < plates; i++) {
+    const side = i % 2 ? 1 : -1;
+    const k = Math.floor(i / 2);
+    const x = side < 0 ? 4 + k * 22 : F.w - 26 - k * 22;
+    ctx.fillStyle = LINE;
+    ctx.fillRect(x - 1, wy + 9, 22, 30);
+    ctx.fillStyle = '#c9933a';
+    ctx.fillRect(x, wy + 10, 20, 28);
+    ctx.fillStyle = '#946224';
+    ctx.fillRect(x, wy + 32, 20, 6);
+    ctx.fillStyle = '#6b4518';
+    ctx.fillRect(x + 3, wy + 13, 2, 2);
+    ctx.fillRect(x + 15, wy + 13, 2, 2);
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(x + 3, wy + 17, 2, 10);
+  }
+  const ids = Object.keys(st.weapons).filter((id) => id !== 'bow');
+  ids.forEach((id, i) => {
+    if (i >= WALL_SLOTS.length) return;
+    drawMachine(ctx, id, WALL_SLOTS[i], wy - 14, st.weapons[id], t);
+  });
+}
+
+function drawMachine(ctx, id, x, y, lv, t) {
+  const k = 1.05 + lv * 0.1;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(k, k);
+  if (lv >= 5) {
+    ctx.fillStyle = 'rgba(255,214,90,' + (0.25 + 0.15 * Math.sin(t * 6)) + ')';
+    ctx.beginPath();
+    ctx.arc(0, -10, 26, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.strokeStyle = LINE;
+  ctx.lineWidth = 1.8;
+  // 底座
+  ctx.fillStyle = '#5a3d22';
+  roundRect(ctx, -14, -4, 28, 10, 3);
+  ctx.fill();
+  ctx.stroke();
+  if (id === 'blade') {
+    // 铜轮机：一只转着的齿轮刃
+    ctx.save();
+    ctx.translate(0, -14);
+    ctx.rotate(t * 6);
+    ctx.fillStyle = '#d9a441';
+    ctx.beginPath();
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2;
+      const r = i % 2 ? 11 : 7;
+      ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  } else if (id === 'pot') {
+    // 投石机：一根摆臂 + 罐
+    const sw = Math.sin(t * 3) * 0.3;
+    ctx.save();
+    ctx.translate(0, -6);
+    ctx.rotate(-0.6 + sw);
+    ctx.fillStyle = '#8a5a2b';
+    ctx.fillRect(-2, -24, 4, 26);
+    ctx.strokeRect(-2, -24, 4, 26);
+    ctx.fillStyle = '#3a2a1c';
+    ctx.beginPath();
+    ctx.arc(0, -26, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  } else if (id === 'chain') {
+    // 铜雷柱：柱子顶上一团电
+    ctx.fillStyle = '#b07a3e';
+    ctx.fillRect(-4, -28, 8, 26);
+    ctx.strokeRect(-4, -28, 8, 26);
+    ctx.strokeStyle = '#9fe8ff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let i = 0; i < 3; i++) {
+      const a = t * 9 + i * 2.1;
+      ctx.moveTo(0, -30);
+      ctx.lineTo(Math.cos(a) * 9, -30 + Math.sin(a) * 7);
+    }
+    ctx.stroke();
+  } else if (id === 'frost') {
+    // 喷汽口：一根弯管冒白汽
+    ctx.fillStyle = '#7c8791';
+    ctx.fillRect(-4, -22, 8, 20);
+    ctx.strokeRect(-4, -22, 8, 20);
+    ctx.fillRect(-4, -26, 14, 6);
+    ctx.strokeRect(-4, -26, 14, 6);
+    const p = (t * 1.5) % 1;
+    ctx.fillStyle = 'rgba(220,240,255,' + (0.7 * (1 - p)) + ')';
+    ctx.beginPath();
+    ctx.arc(12 + p * 6, -26 - p * 12, 4 + p * 5, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (id === 'hammer') {
+    // 大锤架
+    const lift = Math.abs(Math.sin(t * 2.5)) * 6;
+    ctx.fillStyle = '#6b4424';
+    ctx.fillRect(-10, -26, 3, 24);
+    ctx.fillRect(7, -26, 3, 24);
+    ctx.fillRect(-10, -28, 20, 3);
+    ctx.fillStyle = '#7c8791';
+    roundRect(ctx, -7, -20 - lift, 14, 10, 2);
+    ctx.fill();
+    ctx.stroke();
+  } else if (id === 'lamp') {
+    // 灯塔：顶上一盏照妖灯
+    ctx.fillStyle = '#8a5a2b';
+    ctx.fillRect(-4, -24, 8, 22);
+    ctx.strokeRect(-4, -24, 8, 22);
+    ctx.fillStyle = '#ffe08a';
+    ctx.beginPath();
+    ctx.arc(0, -28, 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255,240,170,0.25)';
+    ctx.beginPath();
+    ctx.moveTo(-5, -30);
+    ctx.lineTo(-18, -70);
+    ctx.lineTo(18, -70);
+    ctx.lineTo(5, -30);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
 function drawSegBody(ctx, g, t, fam) {
   const R = g.r;
   const c = FAM[fam];
@@ -1047,6 +1234,7 @@ function drawSegBody(ctx, g, t, fam) {
       }
     }
   }
+  if (fam === 'dragon') return drawCarSeg(ctx, g, t, c);
   disc(ctx, g.x, g.y, R, c.base, c.shade);
   if (fam === 'dragon') {
     // 齿轮边 + 四颗铆钉
@@ -1989,7 +2177,7 @@ function drawScene(ctx, st) {
   ctx.fillRect(0, wy + 112, F.w, 1.5);
 }
 
-module.exports = { IMG, LINE, disc, drawScene, drawDragonAll, drawHero, drawWeapons, drawWeaponIcon, drawTypeIcon, P, pix, drawPlayer, drawCrossbow, drawBuddy, drawPal, drawShells, boltTier, drawIcon, drawBackground, drawDragon, drawBullets, star, fmtHp, bigText, clamp };
+module.exports = { drawWallMachines, WALL_SLOTS, drawSegBody, drawHeadAll, IMG, LINE, disc, drawScene, drawDragonAll, drawHero, drawWeapons, drawWeaponIcon, drawTypeIcon, P, pix, drawPlayer, drawCrossbow, drawBuddy, drawPal, drawShells, boltTier, drawIcon, drawBackground, drawDragon, drawBullets, star, fmtHp, bigText, clamp };
 
 });
 __def("js/main.js", function (module, exports, require) {
@@ -2003,13 +2191,14 @@ const { clamp, easeOutBack, roundRect, bigText, mix } = require('./util.js');
 
 const SAVE = 'moshou_v1';
 const meta = Object.assign(
-  { gold: 0, bowLv: 0, buddies: [], buddy: null, level: 0, best: 0, runs: 0, seenHint: false, muted: false },
+  { gold: 0, bowLv: 0, buddies: [], buddy: null, level: 0, best: 0, runs: 0, seenHint: false, muted: false, introSeen: {} },
   PF.load(SAVE) || {}
 );
 const saveMeta = () => PF.save(SAVE, meta);
 PF.setMuted(meta.muted);
 
-const view = PF.setup(onTouch);
+const SH = require('./shell.js');
+const view = SH.view;
 const { ctx, width: W, height: H, dpr } = view;
 const F = C.FIELD;
 const scale = Math.min(W / F.w, H / F.h);
@@ -2066,6 +2255,10 @@ function startRun() {
   G.fx.length = 0;
   G.targetX = G.st.px;
   G.banner = 1.3;
+  G.wallParts = 0;
+  G.gearFly = [];
+  G.intro = meta.introSeen && meta.introSeen[G.st.ch.id] ? null : { t: 0, id: G.st.ch.id };
+  if (G.intro) G.banner = 0;
   G.hint = meta.level === 0 && !meta.seenHint;
   G.hintMoved = 0;
   G.runStartReal = PF.now();
@@ -2243,6 +2436,7 @@ function handleEvents(st) {
           sparks(e.x, e.y, 5, '#fff2b0');
         }
         coinFly(e.x, e.y);
+        gearFly(e.x, e.y, e.ram ? 3 : 1);
         G.shake = Math.max(G.shake, e.front ? 3 : 2);
         // 连着碎，声音一下比一下高
         snd('break', 30, 0.6, 1 + (combo - 1) * 0.05);
@@ -2990,6 +3184,8 @@ function drawResult() {
     ctx.restore();
   }
 
+  // 右上角：换玩法
+  button('menu', F.w - 100, 14, 88, 34, '换玩法', { size: 14, disabled: !live });
   // 大按钮：再来
   const by = 420;
   button('again', F.w / 2 - 110, by, 220, 66, r.win ? '下一关' : '再守一次', { size: 28, pop: 1 + Math.sin(G.t * 5) * 0.025, disabled: !live });
@@ -3078,6 +3274,10 @@ function hitButton(fx, fy) {
 }
 function onTouch(type, id, x, y) {
   const [fx, fy] = toField(x, y);
+  if (type === 'down' && G.intro) {
+    endIntro();
+    return;
+  }
   if (type === 'down') {
     // 静音按钮（左下角）
     if (fx < 44 && fy > F.h - 44 && G.mode !== 'result') {
@@ -3117,6 +3317,11 @@ function press(id) {
     return;
   }
   if (G.mode !== 'result') return;
+  if (id === 'menu') {
+    snd('tap');
+    SH.go('menu');
+    return;
+  }
   if (id === 'again') {
     snd('tap');
     startRun();
@@ -3175,6 +3380,105 @@ function setTimeoutSafe(fn, ms) {
   if (typeof setTimeout === 'function') setTimeout(fn, ms);
 }
 
+// —— 0.5：打碎的车厢崩出齿轮，飞到城墙上（机关台或者铜甲）——
+function gearFly(x, y, n) {
+  if (!G.gearFly || G.gearFly.length > 40) return;
+  const slots = D.WALL_SLOTS;
+  for (let i = 0; i < n; i++) {
+    const tx = Math.random() < 0.5 ? slots[Math.floor(Math.random() * slots.length)] : 10 + Math.random() * (F.w - 20);
+    G.gearFly.push({ x, y, x0: x, y0: y, tx, ty: F.gateY - 4, t: -i * 0.06, life: 0.55 + Math.random() * 0.2 });
+  }
+}
+function stepGears(dt) {
+  if (!G.gearFly) return;
+  for (let i = G.gearFly.length - 1; i >= 0; i--) {
+    const g = G.gearFly[i];
+    g.t += dt;
+    if (g.t >= g.life) {
+      G.gearFly.splice(i, 1);
+      G.wallParts++;
+      sparks(g.tx, g.ty, 2, '#ffe08a');
+      snd('tap', 40, 0.15, 1.6);
+    }
+  }
+}
+function drawGears() {
+  if (!G.gearFly) return;
+  for (const g of G.gearFly) {
+    if (g.t < 0) continue;
+    const k = g.t / g.life;
+    const x = g.x0 + (g.tx - g.x0) * k;
+    const y = g.y0 + (g.ty - g.y0) * k - Math.sin(k * Math.PI) * 60;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(g.t * 12);
+    ctx.fillStyle = D.P.brassHi;
+    ctx.strokeStyle = D.LINE;
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    for (let i = 0; i < 10; i++) {
+      const a = (i / 10) * Math.PI * 2;
+      const r = i % 2 ? 5 : 3.4;
+      ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+// —— 0.5：每个地方第一次进去，龙先亮相 2 秒 ——
+const INTRO_LINE = { city: '公输家的机关长龙，从沙里钻出来了！', tomb: '盗墓的铁蜈蚣，推开了棺盖！', pit: '地宫里的陶俑，一个个站起来了！' };
+function endIntro() {
+  if (!G.intro) return;
+  meta.introSeen = meta.introSeen || {};
+  meta.introSeen[G.intro.id] = 1;
+  saveMeta();
+  G.intro = null;
+  G.banner = 1.3;
+}
+function drawIntro() {
+  const I = G.intro;
+  const t = I.t;
+  ctx.fillStyle = 'rgba(8,5,3,' + Math.min(0.72, t * 2) + ')';
+  ctx.fillRect(-50, -50, F.w + 100, F.h + 100);
+  const cx = F.w / 2;
+  const groundY = 470;
+  // 地面裂开
+  ctx.strokeStyle = '#2a1a10';
+  ctx.lineWidth = 4;
+  const spread = Math.min(1, t / 0.6);
+  for (let i = 0; i < 7; i++) {
+    const a = (i / 7) * Math.PI - Math.PI;
+    ctx.beginPath();
+    ctx.moveTo(cx, groundY);
+    ctx.lineTo(cx + Math.cos(a) * 150 * spread, groundY + Math.abs(Math.sin(a)) * 30 * spread + 10);
+    ctx.stroke();
+  }
+  // 龙头钻出来，放大三倍
+  const rise = clamp((t - 0.35) / 0.8, 0, 1);
+  const hy = groundY + 40 - rise * 200;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(-50, -50, F.w + 100, groundY + 50);
+  ctx.clip();
+  ctx.translate(cx, hy);
+  ctx.scale(3, 3);
+  ctx.translate(-cx, -hy);
+  const segs = [];
+  for (let k = 3; k >= 1; k--) segs.push({ x: cx + Math.sin(t * 3 + k) * 2, y: hy + 6 + k * 19, a: -Math.PI / 2, r: C.DRAGON.r, id: k, type: null });
+  for (const g of segs) D.drawSegBody(ctx, g, G.t, G.st.ch.enemy);
+  D.drawHeadAll(ctx, G.st, { x: cx, y: hy, a: -Math.PI / 2, r: C.DRAGON.r, id: 0 }, G.t);
+  ctx.restore();
+  // 尘土
+  if (t < 1.2 && Math.random() < 0.6) sparks(cx + (Math.random() - 0.5) * 160, groundY, 1, '#c9a46a');
+  const k = clamp((t - 0.9) / 0.3, 0, 1);
+  bigText(ctx, G.st.ch.name, cx, 120, 30 * k, D.P.gold, D.LINE);
+  bigText(ctx, INTRO_LINE[I.id] || '', cx, 168, 17 * k, '#fff3d8', D.LINE);
+  bigText(ctx, '点一下跳过', cx, 680, 12, '#bfae92', D.LINE);
+}
+
 // —— 每一帧 ——
 let last = PF.now();
 function frame() {
@@ -3190,6 +3494,7 @@ function frame() {
       G.hitstop -= dt;
       break;
     }
+    if (G.intro) break;
     if (G.mode === 'play' && st.mode === 'play') {
       if (G.bot) G.targetX = G.bot(st);
       const before = st.mode;
@@ -3221,6 +3526,11 @@ function frame() {
     meta.seenHint = true;
     saveMeta();
   }
+  if (G.intro) {
+    G.intro.t += dt;
+    if (G.intro.t > 2.3 || G.bot) endIntro();
+  }
+  stepGears(dt);
   stepFx(dt);
   // 图片读完了：重画一次背景
   const nReady = IMGS.filter((k) => D.IMG[k].ok).length;
@@ -3242,7 +3552,6 @@ function frame() {
   if (G.evoShow) G.evoShow.t -= dt;
 
   render(dt);
-  PF.nextFrame(frame);
 }
 
 function render() {
@@ -3278,6 +3587,8 @@ function render() {
   }
   D.drawDragonAll(ctx, st, G.t);
   D.drawWeapons(ctx, st, G.t);
+  D.drawWallMachines(ctx, st, G.t, G.wallParts || 0);
+  drawGears();
   // 蒸汽龟的蒸汽罩着时：整条龙蒙一层白汽（看得出变慢了）
   if (st.slowT > 0) {
     ctx.globalAlpha = Math.min(1, st.slowT) * 0.18;
@@ -3338,6 +3649,7 @@ function render() {
   if (G.mode === 'play' && st.mode === 'play' && st.lever.offer > 0) drawLever(st);
   if (G.typeShow && G.typeShow.t > 0 && G.mode === 'play' && st.mode === 'play') drawTypeShow(st);
   if (G.evoShow && G.evoShow.t > 0 && G.mode === 'play') drawEvoShow();
+  if (G.intro && G.mode === 'play') drawIntro();
   if (G.mode === 'play' && st.mode === 'cards') drawCards(st);
   if (G.mode === 'result') drawResult();
   if (G.mode === 'result' && G.upShow > 0) drawUpgradeShow();
@@ -3372,8 +3684,204 @@ function render() {
 }
 
 startRun();
+SH.register('defend', { onTouch, frame, enter: () => (last = PF.now()) });
 PF.exposeForTest('__moshou', { G, meta, S, C, startRun, press, scale, ox, oy, W, H, saveMeta });
-PF.nextFrame(frame);
+
+});
+__def("js/menu.js", function (module, exports, require) {
+// 主页：两张大卡，A 机关龙 / B 守城打龙，点哪张进哪种。
+const PF = require('./platform.js');
+const SH = require('./shell.js');
+const { clamp, easeOutBack, roundRect, bigText } = require('./util.js');
+const RD = require('./ram/draw.js');
+
+const F = { w: 360, h: 720 };
+const { ctx, width: W, height: H, dpr } = SH.view;
+const scale = Math.min(W / F.w, H / F.h);
+const ox = (W - F.w * scale) / 2;
+const oy = (H - F.h * scale) / 2;
+const bg = PF.loadImage('素材/bg_city.jpg');
+
+const CARDS = [
+  { id: 'ram', key: 'A', name: '机关龙', line: '你当机关龙，撞破墨家城门', save: 'moshou_ram_v1', col: '#8a3a22', y: 318 },
+  { id: 'defend', key: 'B', name: '守城打龙', line: '你当墨家阿铸，守城打龙', save: 'moshou_v1', col: '#2f5a4a', y: 488 },
+];
+
+const M = { t: 0, press: null, pressT: 0 };
+let last = PF.now();
+
+function enter() {
+  last = PF.now();
+  M.press = null;
+}
+
+function onTouch(type, id, px, py) {
+  if (type !== 'down' || M.press) return;
+  const fx = (px - ox) / scale;
+  const fy = (py - oy) / scale;
+  for (const c of CARDS) {
+    if (fx >= 24 && fx <= F.w - 24 && fy >= c.y && fy <= c.y + 146) pick(c.id);
+  }
+}
+
+// 点下去：卡片压一下，0.15 秒后进玩法（第一次进才加载那个玩法的代码）
+function pick(id) {
+  M.press = id;
+  M.pressT = 0;
+  PF.sound('pick', 0.5);
+  PF.save('moshou_menu', { last: id });
+}
+function launch(id) {
+  if (id === 'ram') require('./ram/main.js');
+  else require('./main.js');
+  SH.go(id);
+}
+
+function frame() {
+  const now = PF.now();
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  M.t += dt;
+  if (M.press) {
+    M.pressT += dt;
+    if (M.pressT > 0.15) {
+      const id = M.press;
+      M.press = null;
+      launch(id);
+      return;
+    }
+  }
+  render();
+}
+
+function render() {
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = '#120d0a';
+  ctx.fillRect(0, 0, W, H);
+  ctx.save();
+  ctx.translate(ox, oy);
+  ctx.scale(scale, scale);
+  ctx.beginPath();
+  ctx.rect(0, 0, F.w, F.h);
+  ctx.clip();
+  if (bg.ok) {
+    const sc = Math.max(F.w / bg.width, F.h / bg.height);
+    ctx.drawImage(bg, (F.w - bg.width * sc) / 2, (F.h - bg.height * sc) / 2, bg.width * sc, bg.height * sc);
+  } else {
+    ctx.fillStyle = '#b4864a';
+    ctx.fillRect(0, 0, F.w, F.h);
+  }
+  ctx.fillStyle = 'rgba(14,9,6,0.55)';
+  ctx.fillRect(0, 0, F.w, F.h);
+  // 标题
+  const k = easeOutBack(clamp(M.t / 0.45, 0, 1));
+  bigText(ctx, '墨 守', F.w / 2, 150, 74 * k, '#ffd65a', RD.LINE);
+  bigText(ctx, '墨家与公输家的机关之战', F.w / 2, 214, 17, '#fff3d8', RD.LINE);
+  bigText(ctx, '选一种玩法', F.w / 2, 282, 15, '#e8d7b8', RD.LINE);
+  CARDS.forEach((c, i) => drawCard(c, i));
+  bigText(ctx, '原型 0.5 · 两种玩法进度分开存', F.w / 2, 690, 11, '#bfae92', RD.LINE);
+  ctx.restore();
+}
+
+function drawCard(c, i) {
+  const pressed = M.press === c.id;
+  const appear = easeOutBack(clamp((M.t - 0.15 - i * 0.1) / 0.35, 0, 1));
+  const s = pressed ? 0.95 : appear;
+  const x = 24;
+  const w = F.w - 48;
+  const h = 146;
+  const y = c.y;
+  ctx.save();
+  ctx.translate(F.w / 2, y + h / 2);
+  ctx.scale(s, s);
+  ctx.translate(-F.w / 2, -(y + h / 2));
+  ctx.fillStyle = 'rgba(0,0,0,0.4)';
+  roundRect(ctx, x + 4, y + 6, w, h, 18);
+  ctx.fill();
+  ctx.fillStyle = c.col;
+  ctx.strokeStyle = RD.LINE;
+  ctx.lineWidth = 3;
+  roundRect(ctx, x, y, w, h, 18);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,0.08)';
+  roundRect(ctx, x + 6, y + 6, w - 12, 40, 12);
+  ctx.fill();
+  // 图标
+  const ix = x + 66;
+  const iy = y + h / 2 + 4;
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  ctx.beginPath();
+  ctx.arc(ix, iy, 46, 0, Math.PI * 2);
+  ctx.fill();
+  if (c.id === 'ram') {
+    for (let k = 2; k >= 1; k--) RD.drawCar(ctx, ix + Math.sin(M.t * 3 + k) * 3, iy + 10 + k * 15, 0, k, M.t, 0);
+    ctx.save();
+    ctx.translate(ix, iy - 8);
+    ctx.scale(1.5, 1.5);
+    RD.drawHead(ctx, 0, 0, 0, Math.sin(M.t * 2) > 0.6 ? 1 : 0, M.t, 0);
+    ctx.restore();
+  } else {
+    drawCrossbowIcon(ix, iy, M.t);
+  }
+  // 字
+  bigText(ctx, c.key, x + 136, y + 38, 22, '#ffd65a', RD.LINE, 'left');
+  bigText(ctx, c.name, x + 164, y + 40, 30, '#fff8e6', RD.LINE, 'left');
+  bigText(ctx, c.line, x + 136, y + 84, 13, '#ffe9c4', RD.LINE, 'left');
+  const sv = PF.load(c.save);
+  const lv = sv && sv.level ? sv.level + 1 : 1;
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  roundRect(ctx, x + 136, y + 104, 92, 26, 13);
+  ctx.fill();
+  bigText(ctx, '打到第 ' + lv + ' 关', x + 182, y + 117, 12, '#fff8e6', RD.LINE);
+  ctx.restore();
+}
+
+// B 的图标：一张朝上的连弩
+function drawCrossbowIcon(x, y, t) {
+  ctx.save();
+  ctx.translate(x, y + 6);
+  ctx.strokeStyle = RD.LINE;
+  ctx.lineWidth = 2;
+  ctx.fillStyle = '#6b4424';
+  roundRect(ctx, -9, -22, 18, 54, 5);
+  ctx.fill();
+  ctx.stroke();
+  ctx.lineWidth = 6;
+  ctx.beginPath();
+  ctx.moveTo(-38, -4);
+  ctx.quadraticCurveTo(0, -30, 38, -4);
+  ctx.stroke();
+  ctx.strokeStyle = RD.BRASS;
+  ctx.lineWidth = 3;
+  ctx.stroke();
+  ctx.strokeStyle = '#e8d9b0';
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.moveTo(-38, -4);
+  ctx.lineTo(0, 10);
+  ctx.lineTo(38, -4);
+  ctx.stroke();
+  // 箭
+  const k = (t * 1.2) % 1;
+  ctx.strokeStyle = RD.LINE;
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(0, 8 - k * 40);
+  ctx.lineTo(0, -26 - k * 40);
+  ctx.stroke();
+  ctx.fillStyle = '#cfd6dd';
+  ctx.beginPath();
+  ctx.moveTo(-4, -26 - k * 40);
+  ctx.lineTo(0, -36 - k * 40);
+  ctx.lineTo(4, -26 - k * 40);
+  ctx.fill();
+  ctx.restore();
+}
+
+SH.register('menu', { onTouch, frame, enter });
+SH.go('menu');
+PF.exposeForTest('__menu', { pick, launch, scale, ox, oy, CARDS });
 
 });
 __def("js/path.js", function (module, exports, require) {
@@ -3545,9 +4053,12 @@ function setup(onTouch) {
   } else {
     canvas = document.getElementById('game');
     // 电脑上预览时装成一部手机大小；手机浏览器里就占满屏
-    const phone = window.innerWidth > 520;
-    width = phone ? 390 : window.innerWidth;
-    height = phone ? Math.min(844, window.innerHeight - 20) : window.innerHeight;
+    // 窗口还没显示出来时宽高是 0：先当成一部手机，免得画布变成 0×0
+    const iw = window.innerWidth || 390;
+    const ih = window.innerHeight || 844;
+    const phone = iw > 520;
+    width = phone ? 390 : iw;
+    height = phone ? Math.max(480, Math.min(844, ih - 20)) : ih;
     dpr = window.devicePixelRatio || 2;
     canvas.style.width = width + 'px';
     canvas.style.height = height + 'px';
@@ -3589,7 +4100,7 @@ function nextFrame(fn) {
 function vibrate(strong) {
   if (isWx && wx.vibrateShort) {
     wx.vibrateShort({ type: strong ? 'heavy' : 'light', fail() {} });
-  } else if (typeof navigator !== 'undefined' && navigator.vibrate) {
+  } else if (touched && typeof navigator !== 'undefined' && navigator.vibrate) {
     navigator.vibrate(strong ? 30 : 10);
   }
 }
@@ -3629,7 +4140,9 @@ function audioCtx() {
   return audio;
 }
 // 浏览器要在手指点下去的那一刻打开声音
+let touched = false; // 浏览器要手指点过才准震动
 function unlockAudio() {
+  touched = true;
   const a = audioCtx();
   if (a && a.state === 'suspended' && a.resume) a.resume();
 }
@@ -3713,6 +4226,2600 @@ function exposeForTest(name, value) {
 }
 
 module.exports = { isWx, setup, createOffscreen, loadImage, now, nextFrame, vibrate, showRewardedAd, load, save, exposeForTest, sound, unlockAudio, setMuted };
+
+});
+__def("js/ram/config.js", function (module, exports, require) {
+// 《墨守》0.4「你当机关龙」· 数值表
+// 底子：《Snake VS Block》（5 条道、吃球变长、撞方块变短、栅栏挡路、方块排和空地轮流）。
+// 我们加的：弩塔会射你、一关有城门终点、三个地方、局外升起步节数。
+
+const FIELD = { w: 360, h: 720 };
+const LANES = 5;
+const CELL = 72; // 一条道宽 = 一格
+const BLOCK = 66; // 方块画多大（留缝）
+const HEAD_Y = 500; // 龙头在屏幕上的高度（世界往下滚）
+const HEAD_R = 13;
+const SEG = 17; // 车厢间距
+const CHEW = 0.075; // 啃一口（掉一节、方块 -1）要多久
+const STEER_MAX = 1100; // 龙头横移最快多少像素/秒
+
+// 三个地方：染色、地面颜色、背景图
+const CHAPTERS = [
+  { id: 'city', name: '边城', ground: '#c79a5c', ground2: '#b4864a', crack: '#8d6634', brick: ['#e8cf9a', '#c99a5a', '#8e5f34'], img: 'bg_city' },
+  { id: 'tomb', name: '古墓', ground: '#4f6f66', ground2: '#43615a', crack: '#2c443f', brick: ['#a9c7b8', '#6c9a8a', '#3d5f56'], img: 'bg_tomb' },
+  { id: 'pit', name: '兵马俑地宫', ground: '#8a4a33', ground2: '#7a3f2b', crack: '#542a1c', brick: ['#e2a77f', '#b8714b', '#7d4128'], img: 'bg_pit' },
+];
+
+// 每关：多少排（方块排 + 空地算一排）、方块上限起点、速度、弩塔比例、城门厚度
+// num：方块数字上限（原作 5 起，每 10 排 +1；我们每 8 排 +1）
+const LEVELS = [
+  { ch: 0, rows: 40, num: 5, v: 120, tower: 0.0, gate: 24, types: { powder: 0.08 }, foe: 0 },
+  { ch: 0, rows: 44, num: 6, v: 128, tower: 0.1, gate: 62, types: { iron: 0.14, powder: 0.1 }, foe: 0.25, boss: 'ballista' },
+  { ch: 1, rows: 46, num: 8, v: 134, tower: 0.12, gate: 56, types: { ghost: 0.18, rock: 0.5 }, foe: 0.3 },
+  { ch: 1, rows: 48, num: 9, v: 140, tower: 0.14, gate: 66, types: { ghost: 0.18, rock: 0.6, iron: 0.08 }, foe: 0.35, boss: 'beast' },
+  { ch: 2, rows: 50, num: 10, v: 146, tower: 0.15, gate: 74, types: { clay: 0.2, powder: 0.08 }, foe: 0.35 },
+  { ch: 2, rows: 52, num: 11, v: 152, tower: 0.17, gate: 92, types: { clay: 0.22, iron: 0.1, ghost: 0.06 }, foe: 0.4, boss: 'general' },
+];
+// 敌人兵种：一眼认得出，各有克法（新兵种第一次出现时弹小卡教）
+const TYPES = {
+  powder: { name: '火药砖', tip: '一啃就炸，多掉 3 节 · 用弩车、喷火远远打碎' },
+  iron: { name: '铁盾砖', tip: '火和箭都打不动 · 只能用嘴啃' },
+  ghost: { name: '幽影砖', tip: '一会儿实一会儿虚 · 虚的时候直接穿过去' },
+  rock: { name: '滚石', tip: '带着数字往下滚 · 躲开它，或者硬啃' },
+  clay: { name: '陶俑砖', tip: '不啃它就自己回血 · 一口气啃完' },
+  foe: { name: '墨家机关兵', tip: '横着巡逻，砍到龙身掉 3 节 · 用龙头撞它就吃掉' },
+};
+const BOSSES = {
+  ballista: { name: '巨弩城楼', tip: '城楼上一排巨弩，一次射三条道 · 边躲边啃' },
+  beast: { name: '镇墓兽', tip: '只有它的脸能啃，它会横着来回跑 · 追着它啃' },
+  general: { name: '将军俑', tip: '不啃它就回血 · 攒够节数一口气撞开' },
+};
+const NUM_EVERY = 8; // 每 8 排上限 +1
+const V_EVERY = 12; // 同时速度 +12
+// 打完 6 关之后轮回：数字、城门 +30%
+function level(i) {
+  const base = LEVELS[i % LEVELS.length];
+  const loop = Math.floor(i / LEVELS.length);
+  if (!loop) return Object.assign({ idx: i }, base);
+  const k = 1 + 0.3 * loop;
+  // 精英：数字和城门更大、弩塔三连射、机关兵更多
+  return Object.assign({}, base, { idx: i, elite: loop, num: Math.round(base.num * k), gate: Math.round(base.gate * k), v: base.v + 8 * loop, tower: Math.min(0.3, base.tower + 0.05 * loop), foe: Math.min(0.6, (base.foe || 0) + 0.1 * loop) });
+}
+
+// 一排方块有几格（原作 [4,5,3,2,4,5] 轮着来）
+const BLOCK_COUNTS = [4, 5, 3, 2, 4, 5];
+// 空地有几格高（原作 2–4）、放几根栅栏（原作 [1,2,3,1,2]）
+const GAP_ROWS = [3, 2, 3, 4, 2];
+const FENCES = [1, 2, 3, 1, 2];
+
+// 道具：每 15 秒（按路程算）出一个，三样轮着来
+const POWER_EVERY = 15;
+const POWERS = ['shield', 'bomb', 'magnet'];
+const POWER_TIME = { shield: 5, magnet: 6 };
+
+// 弩塔
+const TOWER = { cd: 1.7, first: 0.6, boltV: 210, range: 430, drop: 3 };
+
+const START_LEN = 6;
+// 局外升级（铜钱）
+const UPGRADES = {
+  startLen: { name: '起步 +1 节', max: 10, cost: (lv) => 30 + lv * 25 },
+  startCard: { name: '开局送一次三选一', max: 1, cost: () => 160 },
+  partLuck: { name: '零件多 1 节的机会 +10%', max: 5, cost: (lv) => 60 + lv * 45 },
+};
+
+// 特殊车厢（三选一的卡）：拿到就挂在龙身上，看得见；再拿升级，3 级进化
+const CARS = [
+  { id: 'fire', name: '喷火龙首', evo: '烈焰龙首', lv: ['龙首往前喷火，烧前面的砖 3 点', '喷得更勤，烧 5 点', '进化：火更长，连烧两排、8 点'] },
+  { id: 'bow', name: '连弩车', evo: '三连弩车', lv: ['背上一张弩，往前射箭打砖', '射得更快', '进化：一次三箭'] },
+  { id: 'tooth', name: '铜牙', evo: '钻头龙首', lv: ['啃砖快 30%，每 3 口有 1 口不掉节', '再快一点', '进化：每 2 口有 1 口不掉节'] },
+  { id: 'armor', name: '铜甲车', evo: '铁壁车', lv: ['挡 2 支弩箭，挡完 5 秒长回来', '挡 3 支', '进化：挡 5 支，3 秒就长回'] },
+  { id: 'magnet', name: '磁石车', evo: '大磁石车', lv: ['零件自己往龙身上飞', '吸得更远', '进化：整屏的零件都吸过来'] },
+  { id: 'forge', name: '锻炉车', evo: '熔金炉车', lv: ['每个零件多 +1 节', '每个零件多 +2 节', '进化：每个零件多 +3 节'] },
+  { id: 'powder', name: '火药车', evo: '霹雳车', lv: ['碎一块砖，左右两块各掉 3 点', '各掉 4 点', '进化：各掉 6 点，还会连环炸'] },
+];
+const MAX_CARS = 4;
+const CHEST_EVERY = 3; // 每 3 段空地放一个机关匣
+
+const ASSETS = [];
+
+module.exports = {
+  FIELD, LANES, CELL, BLOCK, HEAD_Y, HEAD_R, SEG, CHEW, STEER_MAX,
+  CHAPTERS, LEVELS, level, NUM_EVERY, V_EVERY, BLOCK_COUNTS, GAP_ROWS, FENCES,
+  POWER_EVERY, POWERS, POWER_TIME, TOWER, TYPES, BOSSES, START_LEN, UPGRADES, ASSETS, CARS, MAX_CARS, CHEST_EVERY,
+};
+
+});
+__def("js/ram/draw.js", function (module, exports, require) {
+// 《墨守》0.4「你当机关龙」· 画法（风格库 LDR-S1E08-a 祝有好收获：细褐线、平涂一层硬影、黄铜一道白高光）
+const C = require('./config.js');
+const PF = require('../platform.js');
+const { roundRect, bigText, mix, clamp } = require('../util.js');
+
+const LINE = '#1E1A16';
+const BRASS = '#d9a441';
+const BRASS_D = '#9a6a22';
+const BRASS_L = '#f3d27a';
+const RED = '#c8402c';
+const HALF = C.BLOCK / 2;
+
+// —— 地面：每个地方一块离屏贴图，往下滚着贴 ——
+const groundCache = {};
+function groundTile(ch) {
+  if (groundCache[ch.id]) return groundCache[ch.id];
+  const w = C.FIELD.w;
+  const h = 288;
+  const c = PF.createOffscreen(w, h);
+  const g = c.getContext('2d');
+  g.fillStyle = ch.ground;
+  g.fillRect(0, 0, w, h);
+  // 大块的深浅
+  let s = 7;
+  const R = () => ((s = (s * 16807) % 2147483647) / 2147483647);
+  for (let i = 0; i < 26; i++) {
+    g.fillStyle = ch.ground2;
+    g.globalAlpha = 0.5;
+    g.beginPath();
+    g.ellipse(R() * w, R() * h, 20 + R() * 40, 8 + R() * 16, R() * 3, 0, Math.PI * 2);
+    g.fill();
+  }
+  g.globalAlpha = 1;
+  // 车辙：每条道两道浅沟
+  g.strokeStyle = ch.crack;
+  g.globalAlpha = 0.18;
+  g.lineWidth = 2;
+  for (let i = 1; i < C.LANES; i++) {
+    g.beginPath();
+    g.moveTo(C.CELL * i, 0);
+    g.lineTo(C.CELL * i, h);
+    g.stroke();
+  }
+  // 裂纹和碎石
+  g.globalAlpha = 0.55;
+  g.lineWidth = 1.2;
+  for (let i = 0; i < 9; i++) {
+    let x = R() * w;
+    let y = R() * h;
+    g.beginPath();
+    g.moveTo(x, y);
+    for (let k = 0; k < 4; k++) {
+      x += (R() - 0.5) * 26;
+      y += 6 + R() * 12;
+      g.lineTo(x, y);
+    }
+    g.stroke();
+  }
+  g.globalAlpha = 1;
+  for (let i = 0; i < 40; i++) {
+    g.fillStyle = R() < 0.5 ? ch.crack : mix(ch.ground, '#ffffff', 0.25);
+    g.fillRect(R() * w, R() * h, 2 + R() * 2, 2);
+  }
+  groundCache[ch.id] = c;
+  return c;
+}
+
+function drawGround(ctx, ch, scroll) {
+  const tile = groundTile(ch);
+  const h = tile.height;
+  const off = ((scroll % h) + h) % h;
+  for (let y = off - h; y < C.FIELD.h; y += h) ctx.drawImage(tile, 0, y, C.FIELD.w, h);
+}
+
+// —— 木栅栏 ——
+function drawFence(ctx, x, yTop, yBot) {
+  ctx.fillStyle = 'rgba(0,0,0,0.22)';
+  ctx.fillRect(x - 1, yTop + 4, 7, yBot - yTop);
+  ctx.fillStyle = '#8a5a2b';
+  ctx.strokeStyle = LINE;
+  ctx.lineWidth = 1.5;
+  roundRect(ctx, x - 4, yTop, 8, yBot - yTop, 3);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = '#b07a3e';
+  ctx.fillRect(x - 2, yTop + 3, 2, yBot - yTop - 6);
+  // 绑绳
+  ctx.strokeStyle = '#e2c48a';
+  ctx.lineWidth = 2;
+  for (let y = yTop + 10; y < yBot - 6; y += 22) {
+    ctx.beginPath();
+    ctx.moveTo(x - 5, y);
+    ctx.lineTo(x + 5, y + 4);
+    ctx.stroke();
+  }
+}
+
+// —— 城砖 / 弩塔 / 城门 ——
+function brickColor(ch, b) {
+  const num = b.num || 5;
+  if (b.n0 <= Math.floor(num / 2)) return ch.brick[0];
+  if (b.n0 <= num) return ch.brick[1];
+  return ch.brick[2];
+}
+
+function drawBlock(ctx, ch, b, y, t, shake, phased) {
+  if (b.kind === 'gate') return drawGate(ctx, b, y, t, shake);
+  const x = b.x + (shake ? (Math.random() - 0.5) * shake : 0);
+  if (b.type === 'rock') return drawRock(ctx, b, x, y, t);
+  ctx.save();
+  if (b.type === 'ghost') ctx.globalAlpha = phased ? 0.28 : 0.92;
+  drawBrick(ctx, ch, b, x, y, t);
+  ctx.restore();
+}
+
+const TYPE_COL = { iron: '#7c8791', powder: '#9b3b26', ghost: '#9fd0e6', clay: '#c27a4e' };
+function drawBrick(ctx, ch, b, x, y, t) {
+  const s = C.BLOCK;
+  const col = TYPE_COL[b.type] || brickColor(ch, b);
+  // 硬影
+  ctx.fillStyle = 'rgba(20,12,6,0.35)';
+  roundRect(ctx, x - HALF + 4, y - HALF + 5, s, s, 6);
+  ctx.fill();
+  ctx.fillStyle = col;
+  ctx.strokeStyle = LINE;
+  ctx.lineWidth = 2;
+  roundRect(ctx, x - HALF, y - HALF, s, s, 6);
+  ctx.fill();
+  // 下半一层硬影
+  ctx.fillStyle = mix(col, '#000000', 0.22);
+  ctx.fillRect(x - HALF + 2, y + HALF - 14, s - 4, 12);
+  ctx.stroke();
+  // 砖缝
+  ctx.strokeStyle = mix(col, '#000000', 0.35);
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.moveTo(x - HALF + 4, y - 8);
+  ctx.lineTo(x + HALF - 4, y - 8);
+  ctx.moveTo(x - 6, y - HALF + 3);
+  ctx.lineTo(x - 6, y - 8);
+  ctx.moveTo(x + 12, y - 8);
+  ctx.lineTo(x + 12, y + HALF - 14);
+  ctx.stroke();
+  // 被啃掉的裂口
+  const dmg = 1 - b.n / b.n0;
+  if (dmg > 0) {
+    ctx.strokeStyle = LINE;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(x - 8, y + HALF);
+    ctx.lineTo(x - 2, y + HALF - 14 * dmg - 4);
+    ctx.lineTo(x + 6, y + HALF - 22 * dmg - 4);
+    ctx.lineTo(x + 2, y + HALF - 32 * dmg);
+    ctx.stroke();
+  }
+  if (b.kind === 'tower') drawTowerTop(ctx, x, y, t, b);
+  if (b.type) drawTypeMark(ctx, b, x, y, t);
+  bigText(ctx, String(b.n), x, b.kind === 'tower' ? y + 12 : y + 2, b.n >= 100 ? 22 : 28, '#fff8e6', LINE);
+}
+
+// 兵种记号：一眼认得出
+function drawTypeMark(ctx, b, x, y, t) {
+  ctx.strokeStyle = LINE;
+  ctx.lineWidth = 1.6;
+  if (b.type === 'iron') {
+    // 正面一块铁盾 + 四颗铆钉
+    ctx.fillStyle = '#aab4bd';
+    ctx.beginPath();
+    ctx.moveTo(x, y - 26);
+    ctx.lineTo(x + 18, y - 18);
+    ctx.lineTo(x + 14, y + 6);
+    ctx.lineTo(x, y + 16);
+    ctx.lineTo(x - 14, y + 6);
+    ctx.lineTo(x - 18, y - 18);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = LINE;
+    for (const [px, py] of [[-26, -26], [26, -26], [-26, 22], [26, 22]]) {
+      ctx.beginPath();
+      ctx.arc(x + px, y + py, 2.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else if (b.type === 'powder') {
+    // 火药桶 + 冒火星的引线
+    ctx.fillStyle = '#6e3b1c';
+    roundRect(ctx, x - 14, y - 20, 28, 34, 7);
+    ctx.fill();
+    ctx.stroke();
+    ctx.strokeStyle = BRASS;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(x - 14, y - 10);
+    ctx.lineTo(x + 14, y - 10);
+    ctx.moveTo(x - 14, y + 4);
+    ctx.lineTo(x + 14, y + 4);
+    ctx.stroke();
+    ctx.strokeStyle = LINE;
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(x + 4, y - 20);
+    ctx.quadraticCurveTo(x + 14, y - 30, x + 20, y - 27);
+    ctx.stroke();
+    const k = 0.6 + 0.4 * Math.sin(t * 20);
+    ctx.fillStyle = '#ffcf4a';
+    ctx.beginPath();
+    ctx.arc(x + 20, y - 27, 3.5 * k + 1, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (b.type === 'ghost') {
+    // 灯魂：一团蓝白火
+    ctx.fillStyle = 'rgba(230,248,255,0.9)';
+    ctx.beginPath();
+    ctx.moveTo(x, y - 28 - Math.sin(t * 6) * 3);
+    ctx.quadraticCurveTo(x + 16, y - 6, x, y + 4);
+    ctx.quadraticCurveTo(x - 16, y - 6, x, y - 28 - Math.sin(t * 6) * 3);
+    ctx.fill();
+  } else if (b.type === 'clay') {
+    // 陶俑脸：发髻、两只眼、回血时一圈绿光
+    ctx.fillStyle = '#d99a6c';
+    ctx.beginPath();
+    ctx.arc(x, y - 6, 16, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#2b1d16';
+    ctx.beginPath();
+    ctx.arc(x + 6, y - 22, 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillRect(x - 7, y - 8, 4, 2);
+    ctx.fillRect(x + 3, y - 8, 4, 2);
+    if (b.n < b.n0) {
+      ctx.strokeStyle = 'rgba(120,255,140,' + (0.4 + 0.3 * Math.sin(t * 8)) + ')';
+      ctx.lineWidth = 3;
+      roundRect(ctx, x - HALF + 2, y - HALF + 2, C.BLOCK - 4, C.BLOCK - 4, 6);
+      ctx.stroke();
+    }
+  }
+}
+
+// 滚石：圆石头带数字，往下滚着转
+function drawRock(ctx, b, x, y, t) {
+  const r = 28;
+  ctx.fillStyle = 'rgba(20,12,6,0.35)';
+  ctx.beginPath();
+  ctx.ellipse(x + 4, y + 8, r, r * 0.9, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(-b.wy / 30);
+  ctx.fillStyle = '#8f8574';
+  ctx.strokeStyle = LINE;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let i = 0; i < 9; i++) {
+    const a = (i / 9) * Math.PI * 2;
+    const rr = r * (0.88 + ((i * 37) % 10) / 80);
+    ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.strokeStyle = '#5d5547';
+  ctx.beginPath();
+  ctx.moveTo(-12, -6);
+  ctx.lineTo(4, 2);
+  ctx.lineTo(10, 14);
+  ctx.stroke();
+  ctx.restore();
+  bigText(ctx, String(b.n), x, y + 2, 24, '#fff8e6', LINE);
+}
+
+// 弩塔：砖上架一张朝下的连弩 + 小红旗
+function drawTowerTop(ctx, x, y, t, b) {
+  // 旗
+  ctx.strokeStyle = LINE;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(x + 22, y - HALF + 2);
+  ctx.lineTo(x + 22, y - HALF - 16);
+  ctx.stroke();
+  ctx.fillStyle = RED;
+  ctx.beginPath();
+  ctx.moveTo(x + 22, y - HALF - 16);
+  ctx.lineTo(x + 34 + Math.sin(t * 6) * 2, y - HALF - 12);
+  ctx.lineTo(x + 22, y - HALF - 8);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  // 弩（朝下射）：横臂 + 箭槽
+  const pull = b.cd < 0.3 ? (0.3 - b.cd) * 10 : 0;
+  ctx.fillStyle = '#6b4424';
+  roundRect(ctx, x - 6, y - 20, 12, 26, 3);
+  ctx.fill();
+  ctx.stroke();
+  ctx.strokeStyle = LINE;
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(x - 22, y - 10 - pull);
+  ctx.quadraticCurveTo(x, y - 2, x + 22, y - 10 - pull);
+  ctx.stroke();
+  ctx.strokeStyle = BRASS;
+  ctx.lineWidth = 1.6;
+  ctx.stroke();
+  ctx.fillStyle = BRASS_L;
+  ctx.fillRect(x - 1, y - 18, 2, 12);
+}
+
+function drawGate(ctx, b, y, t, shake) {
+  const w = C.FIELD.w;
+  const h = 92;
+  const top = y - h / 2 - 34;
+  const dx = shake ? (Math.random() - 0.5) * shake : 0;
+  ctx.save();
+  ctx.translate(dx, 0);
+  // 城墙
+  ctx.fillStyle = '#7d6a55';
+  ctx.strokeStyle = LINE;
+  ctx.lineWidth = 2;
+  ctx.fillRect(0, top - 40, w, h + 74);
+  for (let i = 0; i < 10; i++) {
+    ctx.fillStyle = i % 2 ? '#8d7962' : '#6f5d4a';
+    ctx.fillRect(i * 36, top - 58, 24, 20);
+    ctx.strokeRect(i * 36, top - 58, 24, 20);
+  }
+  ctx.strokeRect(0, top - 40, w, h + 74);
+  ctx.strokeStyle = 'rgba(30,26,22,0.4)';
+  ctx.lineWidth = 1;
+  for (let r = 0; r < 6; r++) {
+    for (let c = 0; c < 10; c++) ctx.strokeRect(c * 40 + (r % 2) * 20 - 20, top - 40 + r * 20, 40, 20);
+  }
+  // 门洞 + 两扇红门
+  const gx = w / 2;
+  const gw = 220;
+  ctx.fillStyle = '#2a1a10';
+  ctx.beginPath();
+  ctx.moveTo(gx - gw / 2, y + h / 2);
+  ctx.lineTo(gx - gw / 2, top + 24);
+  ctx.quadraticCurveTo(gx, top - 22, gx + gw / 2, top + 24);
+  ctx.lineTo(gx + gw / 2, y + h / 2);
+  ctx.closePath();
+  ctx.fill();
+  const dmg = 1 - b.n / b.n0;
+  ctx.fillStyle = mix('#b8342a', '#5a1a12', dmg * 0.6);
+  ctx.strokeStyle = LINE;
+  ctx.lineWidth = 2;
+  for (const side of [-1, 1]) {
+    ctx.beginPath();
+    const x0 = gx + side * 2;
+    const x1 = gx + side * (gw / 2 - 6);
+    ctx.moveTo(x0, y + h / 2);
+    ctx.lineTo(x0, top + 6);
+    ctx.lineTo(x1, top + 26);
+    ctx.lineTo(x1, y + h / 2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    // 铜钉
+    ctx.fillStyle = BRASS;
+    for (let r = 0; r < 4; r++) {
+      for (let c = 0; c < 4; c++) {
+        const px = gx + side * (18 + c * 24);
+        const py = top + 36 + r * 22;
+        ctx.beginPath();
+        ctx.arc(px, py, 3.2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      }
+    }
+    ctx.fillStyle = mix('#b8342a', '#5a1a12', dmg * 0.6);
+  }
+  // 裂缝随伤害变多
+  ctx.strokeStyle = LINE;
+  ctx.lineWidth = 2;
+  for (let k = 0; k < Math.floor(dmg * 7); k++) {
+    const sx = gx + ((k * 53) % 180) - 90;
+    ctx.beginPath();
+    ctx.moveTo(sx, y + h / 2);
+    ctx.lineTo(sx + 8, y + h / 2 - 20 - k * 4);
+    ctx.lineTo(sx - 4, y + h / 2 - 34 - k * 5);
+    ctx.stroke();
+  }
+  if (b.boss === 'ballista') {
+    // 城楼上三张巨弩
+    for (const bx of [w * 0.2, w * 0.5, w * 0.8]) {
+      ctx.fillStyle = '#5a3a1e';
+      ctx.strokeStyle = LINE;
+      ctx.lineWidth = 2;
+      roundRect(ctx, bx - 8, top - 92, 16, 40, 4);
+      ctx.fill();
+      ctx.stroke();
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.moveTo(bx - 34, top - 70);
+      ctx.quadraticCurveTo(bx, top - 52, bx + 34, top - 70);
+      ctx.stroke();
+      ctx.strokeStyle = BRASS;
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+    }
+  } else if (b.boss === 'beast' && b.door) {
+    // 铁壁 + 来回跑的镇墓兽脸（只有脸能啃）
+    ctx.fillStyle = 'rgba(70,80,88,0.92)';
+    ctx.fillRect(0, top - 40, w, h + 74);
+    const dx = b.door.x;
+    const dw = b.door.w;
+    ctx.fillStyle = '#3d6a5e';
+    ctx.strokeStyle = LINE;
+    ctx.lineWidth = 2.5;
+    roundRect(ctx, dx - dw / 2, top - 30, dw, h + 56, 16);
+    ctx.fill();
+    ctx.stroke();
+    // 角、眼、獠牙
+    ctx.fillStyle = BRASS_L;
+    for (const sd of [-1, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(dx + sd * 30, top - 24);
+      ctx.quadraticCurveTo(dx + sd * 58, top - 60, dx + sd * 40, top - 70);
+      ctx.lineTo(dx + sd * 22, top - 26);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#ff3b1f';
+      ctx.beginPath();
+      ctx.arc(dx + sd * 20, top + 10, 7, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#fff8e6';
+      ctx.beginPath();
+      ctx.moveTo(dx + sd * 14, y + h / 2 - 34);
+      ctx.lineTo(dx + sd * 20, y + h / 2 - 8);
+      ctx.lineTo(dx + sd * 26, y + h / 2 - 34);
+      ctx.fill();
+      ctx.fillStyle = BRASS_L;
+    }
+    bigText(ctx, String(b.n), dx, top + 46, 30, '#ffd65a', LINE);
+    ctx.restore();
+    return;
+  } else if (b.boss === 'general') {
+    // 将军俑：门上一张大陶俑脸，回血时冒绿光
+    ctx.fillStyle = '#c98a5c';
+    ctx.strokeStyle = LINE;
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.arc(gx, top + 34, 40, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#2b1d16';
+    ctx.fillRect(gx - 50, top - 14, 100, 14);
+    ctx.fillRect(gx - 18, top + 26, 10, 4);
+    ctx.fillRect(gx + 8, top + 26, 10, 4);
+    ctx.fillRect(gx - 12, top + 50, 24, 4);
+    if (b.n < b.n0) {
+      ctx.strokeStyle = 'rgba(120,255,140,' + (0.35 + 0.3 * Math.sin(t * 8)) + ')';
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.arc(gx, top + 34, 46, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+  // 门匾数字
+  ctx.fillStyle = '#2b1c12';
+  roundRect(ctx, gx - 46, top - 34, 92, 40, 6);
+  ctx.fill();
+  ctx.strokeStyle = BRASS;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  bigText(ctx, String(b.n), gx, top - 13, 30, '#ffd65a', LINE);
+  ctx.restore();
+}
+
+// —— 零件和道具 ——
+function drawGear(ctx, x, y, r, t) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(t * 1.5);
+  ctx.fillStyle = BRASS;
+  ctx.strokeStyle = LINE;
+  ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  for (let i = 0; i < 16; i++) {
+    const a = (i / 16) * Math.PI * 2;
+    const rr = i % 2 ? r : r * 0.74;
+    ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = BRASS_D;
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 0.32, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  ctx.arc(x, y, r * 0.55, -2.4, -1.6);
+  ctx.stroke();
+}
+
+function drawItem(ctx, it, y, t) {
+  const bob = Math.sin(t * 4 + it.x) * 2;
+  if (it.kind === 'part') {
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.beginPath();
+    ctx.ellipse(it.x + 2, y + 13, 11, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    drawGear(ctx, it.x, y + bob, 11, t);
+    bigText(ctx, String(it.n), it.x, y - 19 + bob, 15, '#fff8e6', LINE);
+    return;
+  }
+  if (it.kind === 'chest') return drawChest(ctx, it.x, y + bob, t, 1);
+  const blink = 0.75 + Math.sin(t * 10) * 0.25;
+  ctx.save();
+  ctx.globalAlpha = blink;
+  ctx.fillStyle = 'rgba(255,240,180,0.35)';
+  ctx.beginPath();
+  ctx.arc(it.x, y + bob, 22, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+  drawPowerIcon(ctx, it.kind, it.x, y + bob, 1);
+}
+
+function drawChest(ctx, x, y, t, k) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(k || 1, k || 1);
+  ctx.fillStyle = 'rgba(255,220,120,' + (0.25 + 0.2 * Math.sin(t * 8)) + ')';
+  ctx.beginPath();
+  ctx.arc(0, 0, 26, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = LINE;
+  ctx.lineWidth = 2;
+  ctx.fillStyle = '#8a4f24';
+  roundRect(ctx, -16, -8, 32, 22, 4);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = BRASS;
+  roundRect(ctx, -17, -17, 34, 11, 4);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillRect(-3, -9, 6, 10);
+  ctx.strokeRect(-3, -9, 6, 10);
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(-12, -14);
+  ctx.lineTo(-4, -14);
+  ctx.stroke();
+  ctx.restore();
+}
+
+// 墨家机关兵（从上往下看）：发髻、褐衣、横着一杆戈
+function drawFoe(ctx, f, y, t) {
+  const x = f.x;
+  const walk = f.stun > 0 ? 0 : Math.sin(t * 14 + f.wy) * 4;
+  ctx.fillStyle = 'rgba(20,12,6,0.3)';
+  ctx.beginPath();
+  ctx.ellipse(x + 3, y + 5, 14, 10, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = LINE;
+  ctx.lineWidth = 1.6;
+  ctx.fillStyle = '#3a2a1c';
+  ctx.fillRect(x - 9, y + 4 + walk, 5, 8);
+  ctx.fillRect(x + 4, y + 4 - walk, 5, 8);
+  ctx.fillStyle = '#6b4a2e';
+  roundRect(ctx, x - 12, y - 8, 24, 16, 6);
+  ctx.fill();
+  ctx.stroke();
+  // 戈
+  const dir = f.vx >= 0 ? 1 : -1;
+  ctx.strokeStyle = LINE;
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(x - dir * 10, y + 2);
+  ctx.lineTo(x + dir * 24, y - 6);
+  ctx.stroke();
+  ctx.fillStyle = '#cfd6dd';
+  ctx.beginPath();
+  ctx.moveTo(x + dir * 24, y - 6);
+  ctx.lineTo(x + dir * 32, y - 12);
+  ctx.lineTo(x + dir * 26, y - 1);
+  ctx.closePath();
+  ctx.fill();
+  ctx.lineWidth = 1.2;
+  ctx.stroke();
+  ctx.fillStyle = '#e2b48a';
+  ctx.beginPath();
+  ctx.arc(x, y - 4, 7, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = '#1E1A16';
+  ctx.beginPath();
+  ctx.arc(x, y - 6, 4, 0, Math.PI * 2);
+  ctx.fill();
+  if (f.stun > 0) bigText(ctx, '晕', x, y - 22, 12, '#ffd65a', LINE);
+}
+
+function drawShot(ctx, x, y) {
+  ctx.strokeStyle = LINE;
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(x, y + 12);
+  ctx.lineTo(x, y - 8);
+  ctx.stroke();
+  ctx.strokeStyle = BRASS_L;
+  ctx.lineWidth = 1.4;
+  ctx.stroke();
+  ctx.fillStyle = '#e8eef3';
+  ctx.beginPath();
+  ctx.moveTo(x - 3.5, y - 6);
+  ctx.lineTo(x, y - 14);
+  ctx.lineTo(x + 3.5, y - 6);
+  ctx.closePath();
+  ctx.fill();
+}
+
+// 喷火：从龙嘴到砖的一道火柱
+function drawFlame(ctx, x, y0, y1, k, lv) {
+  const w = lv >= 3 ? 26 : 18;
+  ctx.save();
+  ctx.globalAlpha = k;
+  const g = ctx.createLinearGradient(0, y0, 0, y1);
+  g.addColorStop(0, '#fff3a0');
+  g.addColorStop(0.4, '#ffb02e');
+  g.addColorStop(1, 'rgba(230,60,20,0.6)');
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.moveTo(x - 6, y0);
+  ctx.quadraticCurveTo(x - w, (y0 + y1) / 2, x - w * 0.6, y1);
+  ctx.lineTo(x + w * 0.6, y1);
+  ctx.quadraticCurveTo(x + w, (y0 + y1) / 2, x + 6, y0);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+// 特殊车厢：在普通车厢上加一样看得见的东西；进化后更大、发光
+function drawSpecialCar(ctx, id, x, y, a, lv, t, armor) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(a);
+  const big = lv >= 3 ? 1.25 : 1;
+  ctx.scale(big, big);
+  if (lv >= 3) {
+    ctx.fillStyle = 'rgba(255,214,90,' + (0.25 + 0.15 * Math.sin(t * 6)) + ')';
+    ctx.beginPath();
+    ctx.arc(0, 0, 20, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.strokeStyle = LINE;
+  ctx.lineWidth = 1.5;
+  if (id === 'bow') {
+    ctx.fillStyle = '#6b4424';
+    roundRect(ctx, -3, -14, 6, 18, 2);
+    ctx.fill();
+    ctx.stroke();
+    const n = lv >= 3 ? 3 : 1;
+    for (let k = 0; k < n; k++) {
+      const off = (k - (n - 1) / 2) * 7;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(-14 + off * 0.3, -6 + Math.abs(off) * 0.4);
+      ctx.quadraticCurveTo(off, -16, 14 + off * 0.3, -6 + Math.abs(off) * 0.4);
+      ctx.stroke();
+      ctx.strokeStyle = BRASS;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.strokeStyle = LINE;
+    }
+  } else if (id === 'armor') {
+    ctx.fillStyle = '#8d98a2';
+    roundRect(ctx, -14, -13, 28, 26, 5);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = LINE;
+    for (let k = 0; k < (armor || 0); k++) {
+      ctx.fillStyle = '#ffd65a';
+      ctx.beginPath();
+      ctx.arc(-9 + k * 4.5, 8, 1.8, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else if (id === 'magnet') {
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.arc(0, -2, 8, Math.PI, 0, true);
+    ctx.stroke();
+    ctx.strokeStyle = RED;
+    ctx.lineWidth = 3.5;
+    ctx.stroke();
+  } else if (id === 'forge') {
+    ctx.fillStyle = '#3a2a1c';
+    roundRect(ctx, -9, -9, 18, 18, 4);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255,' + Math.round(140 + 60 * Math.sin(t * 9)) + ',40,1)';
+    ctx.beginPath();
+    ctx.arc(0, 1, 5.5, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (id === 'powder') {
+    ctx.fillStyle = '#6e3b1c';
+    roundRect(ctx, -8, -10, 16, 20, 5);
+    ctx.fill();
+    ctx.stroke();
+    ctx.strokeStyle = BRASS;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-8, -3);
+    ctx.lineTo(8, -3);
+    ctx.moveTo(-8, 4);
+    ctx.lineTo(8, 4);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+// 卡片上的小图标
+function drawCarIcon(ctx, id, x, y, k, t) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(k, k);
+  if (id === 'fire') {
+    drawHead(ctx, 0, 6, 0, 1, t, 0);
+    drawFlame(ctx, 0, -14, -32, 1, 2);
+  } else if (id === 'tooth') {
+    drawHead(ctx, 0, 0, 0, 1, t, 0);
+    ctx.fillStyle = '#cfd6dd';
+    ctx.strokeStyle = LINE;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(-8, -18);
+    ctx.lineTo(0, -34);
+    ctx.lineTo(8, -18);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  } else {
+    drawCar(ctx, 0, 0, 0, 0, t, 0);
+    drawSpecialCar(ctx, id, 0, 0, 0, 1, t, 3);
+  }
+  ctx.restore();
+}
+
+function drawPowerIcon(ctx, kind, x, y, k) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(k, k);
+  ctx.strokeStyle = LINE;
+  ctx.lineWidth = 1.8;
+  if (kind === 'shield') {
+    ctx.fillStyle = BRASS;
+    ctx.beginPath();
+    ctx.moveTo(0, -15);
+    ctx.lineTo(13, -9);
+    ctx.lineTo(10, 7);
+    ctx.lineTo(0, 15);
+    ctx.lineTo(-10, 7);
+    ctx.lineTo(-13, -9);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = RED;
+    ctx.beginPath();
+    ctx.arc(0, -1, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.strokeStyle = '#fff';
+    ctx.beginPath();
+    ctx.moveTo(-8, -7);
+    ctx.lineTo(-6, 3);
+    ctx.stroke();
+  } else if (kind === 'bomb') {
+    ctx.fillStyle = '#8a4f24';
+    roundRect(ctx, -11, -11, 22, 24, 5);
+    ctx.fill();
+    ctx.stroke();
+    ctx.strokeStyle = BRASS;
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(-11, -4);
+    ctx.lineTo(11, -4);
+    ctx.moveTo(-11, 6);
+    ctx.lineTo(11, 6);
+    ctx.stroke();
+    ctx.strokeStyle = LINE;
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(0, -11);
+    ctx.quadraticCurveTo(6, -18, 4, -22);
+    ctx.stroke();
+    ctx.fillStyle = '#ffcf4a';
+    ctx.beginPath();
+    ctx.arc(4, -23, 3, 0, Math.PI * 2);
+    ctx.fill();
+  } else {
+    // 磁石：红色马蹄
+    ctx.lineWidth = 8;
+    ctx.strokeStyle = LINE;
+    ctx.beginPath();
+    ctx.arc(0, 0, 10, Math.PI, 0, true);
+    ctx.stroke();
+    ctx.lineWidth = 5;
+    ctx.strokeStyle = RED;
+    ctx.stroke();
+    ctx.fillStyle = '#dfe3e8';
+    ctx.fillRect(-14, -2, 8, 7);
+    ctx.fillRect(6, -2, 8, 7);
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = LINE;
+    ctx.strokeRect(-14, -2, 8, 7);
+    ctx.strokeRect(6, -2, 8, 7);
+  }
+  ctx.restore();
+}
+
+// —— 弩箭（朝下飞）——
+function drawBolt(ctx, x, y) {
+  ctx.strokeStyle = LINE;
+  ctx.lineWidth = 3.5;
+  ctx.beginPath();
+  ctx.moveTo(x, y - 18);
+  ctx.lineTo(x, y + 6);
+  ctx.stroke();
+  ctx.strokeStyle = '#e8d9b0';
+  ctx.lineWidth = 1.6;
+  ctx.stroke();
+  ctx.fillStyle = '#cfd6dd';
+  ctx.strokeStyle = LINE;
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.moveTo(x - 4, y + 4);
+  ctx.lineTo(x, y + 13);
+  ctx.lineTo(x + 4, y + 4);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = RED;
+  ctx.beginPath();
+  ctx.moveTo(x, y - 18);
+  ctx.lineTo(x - 5, y - 22);
+  ctx.lineTo(x, y - 12);
+  ctx.lineTo(x + 5, y - 22);
+  ctx.closePath();
+  ctx.fill();
+}
+
+// —— 机关龙：车厢 + 龙首 ——
+function drawCar(ctx, x, y, a, i, t, hurt) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(a);
+  const s = 11;
+  ctx.fillStyle = 'rgba(20,12,6,0.32)';
+  roundRect(ctx, -s + 3, -s + 4, s * 2, s * 2, 5);
+  ctx.fill();
+  const base = hurt > 0 ? mix(BRASS, '#ff4a2a', hurt) : i % 3 === 0 ? '#c98f35' : BRASS;
+  ctx.fillStyle = base;
+  ctx.strokeStyle = LINE;
+  ctx.lineWidth = 1.6;
+  roundRect(ctx, -s, -s, s * 2, s * 2, 5);
+  ctx.fill();
+  ctx.fillStyle = mix(base, '#000000', 0.25);
+  ctx.fillRect(-s + 2, s - 6, s * 2 - 4, 4);
+  ctx.stroke();
+  // 轮子
+  ctx.fillStyle = '#3a2a1c';
+  for (const sx of [-s - 2, s - 1]) {
+    ctx.fillRect(sx, -6, 3, 4);
+    ctx.fillRect(sx, 3, 3, 4);
+  }
+  // 铆钉
+  ctx.fillStyle = BRASS_D;
+  for (const [px, py] of [[-6, -6], [6, -6], [-6, 4], [6, 4]]) {
+    ctx.beginPath();
+    ctx.arc(px, py, 1.6, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // 高光
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.moveTo(-7, -8);
+  ctx.lineTo(-7, 0);
+  ctx.stroke();
+  // 每三节一根小烟囱
+  if (i % 3 === 1) {
+    ctx.fillStyle = '#5a3d22';
+    ctx.fillRect(-3, -3, 6, 6);
+    ctx.strokeStyle = LINE;
+    ctx.strokeRect(-3, -3, 6, 6);
+  }
+  ctx.restore();
+}
+
+function drawHead(ctx, x, y, a, chew, t, shield) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(a);
+  const open = chew > 0 ? Math.abs(Math.sin(t * 28)) * 7 : 1.5;
+  // 影
+  ctx.fillStyle = 'rgba(20,12,6,0.32)';
+  ctx.beginPath();
+  ctx.ellipse(3, 5, 16, 19, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = LINE;
+  ctx.lineWidth = 1.8;
+  // 角
+  ctx.fillStyle = BRASS_L;
+  for (const sd of [-1, 1]) {
+    ctx.beginPath();
+    ctx.moveTo(sd * 8, 4);
+    ctx.quadraticCurveTo(sd * 20, 10, sd * 18, 22);
+    ctx.lineTo(sd * 12, 10);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  }
+  // 上颚 / 下颚（朝上张）
+  ctx.fillStyle = '#7a1e14';
+  ctx.beginPath();
+  ctx.ellipse(0, -12, 9, 6 + open * 0.5, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = BRASS;
+  ctx.beginPath();
+  ctx.moveTo(-14, 4);
+  ctx.lineTo(-11, -14 - open);
+  ctx.quadraticCurveTo(0, -24 - open, 11, -14 - open);
+  ctx.lineTo(14, 4);
+  ctx.quadraticCurveTo(0, 18, -14, 4);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  // 牙
+  ctx.fillStyle = '#fff8e6';
+  for (const px of [-7, -2, 3, 8]) {
+    ctx.beginPath();
+    ctx.moveTo(px - 2, -13 - open);
+    ctx.lineTo(px, -8 - open * 0.4);
+    ctx.lineTo(px + 2, -13 - open);
+    ctx.fill();
+  }
+  // 鼻梁硬影 + 高光
+  ctx.fillStyle = BRASS_D;
+  ctx.beginPath();
+  ctx.moveTo(4, -12);
+  ctx.lineTo(12, 2);
+  ctx.lineTo(4, 8);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  ctx.moveTo(-6, -10);
+  ctx.lineTo(-8, 0);
+  ctx.stroke();
+  // 红灯眼
+  ctx.fillStyle = '#ff3b1f';
+  ctx.strokeStyle = LINE;
+  ctx.lineWidth = 1.2;
+  for (const sd of [-1, 1]) {
+    ctx.beginPath();
+    ctx.arc(sd * 7, -2, 3.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  }
+  ctx.fillStyle = 'rgba(255,90,40,0.35)';
+  ctx.beginPath();
+  ctx.arc(-7, -2, 7, 0, Math.PI * 2);
+  ctx.arc(7, -2, 7, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+  if (shield > 0) {
+    ctx.save();
+    ctx.globalAlpha = 0.35 + 0.2 * Math.sin(t * 12);
+    ctx.strokeStyle = BRASS_L;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(x, y, 24, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+module.exports = { drawChest, drawFoe, drawShot, drawFlame, drawSpecialCar, drawCarIcon, LINE, BRASS, BRASS_L, BRASS_D, RED, drawGround, drawFence, drawBlock, drawItem, drawPowerIcon, drawBolt, drawCar, drawHead, drawGear, clamp };
+
+});
+__def("js/ram/main.js", function (module, exports, require) {
+// 《墨守》0.4「你当机关龙」· 主程序：手指、画面、特效、声音、结算和局外升级。
+// 规则在 sim.js，画法在 draw.js，平台差别只在 platform.js。
+const PF = require('../platform.js');
+const C = require('./config.js');
+const S = require('./sim.js');
+const D = require('./draw.js');
+const { clamp, easeOutBack, roundRect, bigText, mix } = require('../util.js');
+
+const SAVE = 'moshou_ram_v1';
+const meta = Object.assign({ coins: 0, startLv: 0, cardLv: 0, partLv: 0, level: 0, best: 0, runs: 0, muted: false, seenHint: false }, PF.load(SAVE) || {});
+const saveMeta = () => PF.save(SAVE, meta);
+PF.setMuted(meta.muted);
+
+const SH = require('../shell.js');
+const view = SH.view;
+const { ctx, width: W, height: H, dpr } = view;
+const F = C.FIELD;
+const scale = Math.min(W / F.w, H / F.h);
+const ox = (W - F.w * scale) / 2;
+const oy = (H - F.h * scale) / 2;
+
+const G = {
+  mode: 'play', // play | end | result
+  st: null,
+  fx: [],
+  pops: [],
+  shake: 0,
+  flash: 0,
+  flashColor: '#fff',
+  hitstop: 0,
+  banner: 0,
+  drag: null,
+  endT: 0,
+  result: null,
+  buttons: [],
+  sndCd: {},
+  speed: 1, // 测试用：一帧跑几步
+  bot: null, // 测试用：自动玩
+  botMem: {},
+  log: [],
+  hintT: 0,
+  resultAt: 0,
+  t: 0,
+  flames: [],
+  teach: null,
+  evo: null,
+  cardRects: [],
+  cardsAt: 0,
+};
+
+function snd(name, gapMs, vol, rate) {
+  const now = PF.now();
+  if (gapMs && G.sndCd[name] && now - G.sndCd[name] < gapMs) return;
+  G.sndCd[name] = now;
+  PF.sound(name, vol, rate);
+}
+
+function startRun() {
+  const seed = ((PF.now() % 1000000007) ^ (meta.runs * 2654435761)) >>> 0;
+  G.st = S.newRun(meta.level, meta, seed || 1);
+  G.mode = 'play';
+  G.fx.length = 0;
+  G.pops.length = 0;
+  G.result = null;
+  G.banner = 1.6;
+  G.drag = null;
+  G.botMem = {};
+  G.hintT = meta.seenHint ? 0 : 4;
+  G.flames.length = 0;
+  G.teach = null;
+  G.evo = null;
+}
+
+// —— 坐标：世界 wy → 屏幕 y ——
+const sy = (wy) => C.HEAD_Y - (wy - G.st.head.wy);
+
+// —— 手指 ——
+function toField(px, py) {
+  return [(px - ox) / scale, (py - oy) / scale];
+}
+function onTouch(type, id, px, py) {
+  const [fx, fy] = toField(px, py);
+  if (type === 'down') {
+    if (G.mode === 'result') {
+      for (const b of G.buttons) {
+        if (fx >= b.x && fx <= b.x + b.w && fy >= b.y && fy <= b.y + b.h) press(b.id);
+      }
+      return;
+    }
+    if (fx < 40 && fy < 40) {
+      meta.muted = !meta.muted;
+      PF.setMuted(meta.muted);
+      saveMeta();
+      return;
+    }
+    if (G.st.mode === 'cards') {
+      if (PF.now() - G.cardsAt < 250) return;
+      G.cardRects.forEach((r, i) => {
+        if (fx >= r.x && fx <= r.x + r.w && fy >= r.y && fy <= r.y + r.h) {
+          S.pick(G.st, i);
+          handleEvents(G.st);
+        }
+      });
+      return;
+    }
+    if (G.mode === 'play') G.drag = { id, fx0: fx, hx0: G.st.targetX };
+  } else if (type === 'move') {
+    if (G.drag && G.drag.id === id && G.mode === 'play') {
+      G.st.targetX = clamp(G.drag.hx0 + (fx - G.drag.fx0) * 1.15, 14, F.w - 14);
+      if (Math.abs(fx - G.drag.fx0) > 20 && !meta.seenHint) {
+        meta.seenHint = true;
+        saveMeta();
+      }
+    }
+  } else if (type === 'up') {
+    if (G.drag && G.drag.id === id) G.drag = null;
+  }
+}
+
+const UP_META = { startLen: 'startLv', startCard: 'cardLv', partLuck: 'partLv' };
+function press(id) {
+  if (id === 'menu') {
+    snd('tap');
+    SH.go('menu');
+    return;
+  }
+  if (id === 'again' || id === 'next') {
+    snd('tap');
+    startRun();
+  } else if (id.indexOf('up_') === 0) {
+    const key = id.slice(3);
+    const u = C.UPGRADES[key];
+    const mk = UP_META[key];
+    const lv = meta[mk];
+    if (lv >= u.max) return;
+    const cost = u.cost(lv);
+    if (meta.coins < cost) {
+      snd('alarm', 200, 0.3);
+      return;
+    }
+    meta.coins -= cost;
+    meta[mk]++;
+    saveMeta();
+    snd('upgrade');
+    G.result.upFlash = 0.6;
+    G.result.upName = u.name;
+  }
+}
+
+// —— 特效 ——
+function chunks(x, y, n, col, power) {
+  for (let i = 0; i < n; i++) {
+    const a = -Math.PI / 2 + (Math.random() - 0.5) * 2.6;
+    const v = (80 + Math.random() * 180) * (power || 1);
+    G.fx.push({ k: 'chunk', x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 0.6 + Math.random() * 0.4, t: 0, s: 3 + Math.random() * 5, col, rot: Math.random() * 6 });
+  }
+}
+function puff(x, y, n, col) {
+  for (let i = 0; i < n; i++) G.fx.push({ k: 'puff', x: x + (Math.random() - 0.5) * 16, y, vx: (Math.random() - 0.5) * 50, vy: -30 - Math.random() * 40, life: 0.5 + Math.random() * 0.3, t: 0, s: 6 + Math.random() * 6, col: col || 'rgba(244,239,230,0.5)' });
+}
+function sparks(x, y, n, col) {
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const v = 120 + Math.random() * 200;
+    G.fx.push({ k: 'spark', x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 0.25 + Math.random() * 0.2, t: 0, col: col || '#ffd65a' });
+  }
+}
+function pop(text, x, y, col, size) {
+  G.pops.push({ text, x, y, col: col || '#fff8e6', size: size || 18, t: 0, life: 0.7 });
+}
+function dropCar(st) {
+  const segs = S.segments(st, st.len + 1);
+  const p = segs[segs.length - 1];
+  if (!p) return;
+  G.fx.push({ k: 'car', x: p.x, y: sy(p.wy), vx: (Math.random() - 0.5) * 120, vy: -60, life: 0.6, t: 0, rot: 0, vr: (Math.random() - 0.5) * 12 });
+}
+
+function handleEvents(st) {
+  const ch = S.chapter(st);
+  for (const e of st.events) {
+    const y = e.wy !== undefined ? sy(e.wy) : 0;
+    if (e.t === 'chew') {
+      const by = y + S.HALF;
+      chunks(e.hx !== undefined ? e.hx : e.x, by, e.kind === 'gate' ? 3 : 2, e.kind === 'gate' ? '#a0302a' : ch.brick[1], 0.7);
+      if (e.combo % 3 === 0) puff(e.hx, by + 6, 1);
+      dropCar(st);
+      snd('hit', 35, 0.35, 0.9 + Math.min(e.combo, 30) * 0.035);
+      G.shake = Math.max(G.shake, e.kind === 'gate' ? 3 : 1.6);
+      if (e.combo % 4 === 1) PF.vibrate(false);
+    } else if (e.t === 'bump') {
+      snd('thud', 80, 0.5);
+      G.shake = Math.max(G.shake, 3);
+    } else if (e.t === 'break') {
+      if (e.kind === 'gate') {
+        chunks(F.w / 2, y, 40, '#a0302a', 2);
+        chunks(F.w / 2, y, 30, '#7d6a55', 2);
+        sparks(F.w / 2, y, 30);
+        G.flash = 0.5;
+        G.flashColor = '#fff3c4';
+        G.shake = 16;
+        G.hitstop = 0.12;
+        snd('boom', 0, 0.8);
+      } else {
+        chunks(e.x, y, 12, ch.brick[1], 1.2);
+        chunks(e.x, y, 5, ch.brick[2], 1);
+        puff(e.x, y + 10, 4);
+        G.shake = Math.max(G.shake, e.how === 'bomb' ? 4 : 5);
+        G.hitstop = Math.max(G.hitstop, 0.035);
+        pop('+' + e.n0 * 10, e.x, y - 10, '#ffd65a', 16);
+        if (e.kind === 'tower') {
+          sparks(e.x, y, 14);
+          snd('clang', 60, 0.6);
+          pop('拆了弩塔！', e.x, y - 34, '#ffb74a', 16);
+        }
+        snd(e.how === 'shield' ? 'crit' : 'break', 50, 0.65);
+      }
+    } else if (e.t === 'part') {
+      sparks(e.x, y, 6, '#f3d27a');
+      pop('+' + e.n, e.x, y - 16, '#9dff7a', 20);
+      snd('coin', 40, 0.5, 1 + Math.min(st.len, 60) * 0.006);
+    } else if (e.t === 'power') {
+      const name = { shield: '铜甲！撞墙不掉节', magnet: '磁石！零件自己飞来' }[e.kind];
+      pop(name, F.w / 2, C.HEAD_Y - 90, '#ffd65a', 20);
+      snd('chest', 0, 0.6);
+    } else if (e.t === 'bomb') {
+      G.flash = 0.35;
+      G.flashColor = '#ffb04a';
+      G.shake = 10;
+      sparks(e.x, y, 24, '#ff9a3a');
+      pop('火药桶！炸掉 ' + e.cnt + ' 块', F.w / 2, C.HEAD_Y - 90, '#ffb04a', 20);
+      snd('blast', 0, 0.8);
+    } else if (e.t === 'fire') {
+      snd('shoot', 120, 0.25, 0.7);
+    } else if (e.t === 'boltHit') {
+      G.flash = 0.18;
+      G.flashColor = '#ff4a2a';
+      G.shake = Math.max(G.shake, 5);
+      sparks(e.x, y, 10, '#ffe0a0');
+      pop('-1', e.x + 14, y - 10, '#ff6a4a', 20);
+      dropCar(st);
+      snd('clang', 50, 0.6);
+      PF.vibrate(true);
+    } else if (e.t === 'deflect') {
+      sparks(e.x, y, 8, '#fff');
+      snd('clang', 50, 0.4, 1.6);
+    } else if (e.t === 'chest') {
+      sparks(e.x, y, 12, '#ffe08a');
+      snd('chest', 0, 0.6);
+    } else if (e.t === 'cards') {
+      G.cardsAt = PF.now();
+      G.drag = null;
+    } else if (e.t === 'pick') {
+      const car = C.CARS.find((c) => c.id === e.id);
+      snd(e.evo ? 'evolve' : 'pick', 0, 0.6);
+      if (e.evo) G.evo = { id: e.id, name: car.evo, t: 0 };
+      else pop(car.name + (e.lv > 1 ? ' Lv' + e.lv : ''), F.w / 2, C.HEAD_Y - 80, '#ffd65a', 20);
+    } else if (e.t === 'fire') {
+      G.flames.push({ x: e.x, wy0: e.wy + 14, wy1: e.to, t: 0, lv: e.lv });
+      snd('blast', 80, 0.35, 1.4);
+    } else if (e.t === 'bowShot') {
+      snd('shoot', 60, 0.3);
+    } else if (e.t === 'shotHit') {
+      sparks(e.x, y, 3, '#fff3c4');
+      snd('hit', 40, 0.2, 1.3);
+    } else if (e.t === 'clank') {
+      sparks(e.x, y, 4, '#ffffff');
+      snd('clang', 120, 0.35, 1.5);
+    } else if (e.t === 'kaboom') {
+      chunks(e.x, y, 16, '#9b3b26', 1.6);
+      sparks(e.x, y, 18, '#ff9a3a');
+      G.shake = Math.max(G.shake, 8);
+      snd('boom', 60, 0.6);
+      if (e.self) {
+        G.flash = 0.25;
+        G.flashColor = '#ff4a2a';
+        pop('炸了！-3', e.x, y - 30, '#ff6a4a', 22);
+        for (let k = 0; k < 3; k++) dropCar(st);
+      } else pop('远远打爆！', e.x, y - 30, '#ffb04a', 16);
+    } else if (e.t === 'regen') {
+      pop('+1', e.x + 18, y - 20, '#7dff8a', 13);
+    } else if (e.t === 'volley') {
+      snd('salvo', 0, 0.5);
+      G.shake = Math.max(G.shake, 3);
+    } else if (e.t === 'foeEat') {
+      chunks(e.x, y, 8, '#6b4a2e', 1);
+      pop('吃掉机关兵 +2', e.x, y - 20, '#9dff7a', 16);
+      snd('bite', 60, 0.6);
+    } else if (e.t === 'foeCut') {
+      G.flash = 0.22;
+      G.flashColor = '#ff4a2a';
+      G.shake = Math.max(G.shake, 7);
+      sparks(e.x, y, 12, '#ffe0a0');
+      pop('被砍了！-3', e.x + 10, y - 16, '#ff6a4a', 20);
+      for (let k = 0; k < 3; k++) dropCar(st);
+      snd('hitHeavy', 60, 0.6);
+      PF.vibrate(true);
+    } else if (e.t === 'newType' || e.t === 'newBoss') {
+      const info = (e.t === 'newBoss' ? C.BOSSES : C.TYPES)[e.key];
+      G.teach = { key: e.key, boss: e.t === 'newBoss', name: info.name, tip: info.tip, t: 0 };
+      snd('alarm', 0, 0.35);
+    } else if (e.t === 'powder') {
+      sparks(e.x, y, 10, '#ff9a3a');
+    } else if (e.t === 'win') {
+      G.mode = 'end';
+      G.endT = 1.2;
+      snd('win', 0, 0.7);
+    } else if (e.t === 'lose') {
+      G.mode = 'end';
+      G.endT = 0.75;
+      G.flash = 0.3;
+      G.flashColor = '#000';
+      snd('lose', 0, 0.6);
+    }
+  }
+  st.events.length = 0;
+}
+
+function finish() {
+  const st = G.st;
+  const win = st.mode === 'win';
+  const coins = Math.round(st.score / 40) + st.parts;
+  meta.coins += coins;
+  meta.runs++;
+  if (win) meta.level++;
+  meta.best = Math.max(meta.best, meta.level);
+  saveMeta();
+  G.log.push({ level: st.lv.idx, win, t: st.t, short: st.short, len: st.len, maxLen: st.maxLen });
+  const prog = clamp(st.head.wy / st.endWY, 0, 1);
+  const left = st.rows.filter((w) => w > st.head.wy).length;
+  G.result = { win, coins, short: st.short, prog, left, lv: st.lv.idx, gate: st.gate.n0, t: 0, upFlash: 0, maxLen: st.maxLen };
+  G.mode = 'result';
+  G.resultAt = PF.now();
+}
+
+// —— 每帧 ——
+let last = PF.now();
+let acc = 0;
+function frame() {
+  const now = PF.now();
+  let dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  G.t += dt;
+  const st = G.st;
+  if (G.hitstop > 0) {
+    G.hitstop -= dt;
+    dt *= 0.15;
+  }
+  if (G.mode === 'play' || G.mode === 'end') {
+    acc += dt * G.speed;
+    let n = 0;
+    while (acc >= 1 / 60 && n++ < 40) {
+      acc -= 1 / 60;
+      if (G.mode === 'play') {
+        if (G.evo) break;
+        if (st.mode === 'cards') {
+          if (G.bot && PF.now() - G.cardsAt > 300) {
+            S.botPick(st);
+            handleEvents(st);
+          }
+          break;
+        }
+        if (G.bot) st.targetX = S.botThink(st, G.bot, G.botMem);
+        S.step(st, 1 / 60);
+        handleEvents(st);
+      }
+    }
+    if (G.mode === 'end') {
+      G.endT -= dt * G.speed;
+      if (G.endT <= 0) finish();
+    }
+  }
+  if (G.bot && G.mode === 'result' && PF.now() - G.resultAt > 300) press('again');
+  stepFx(dt);
+  if (G.banner > 0) G.banner -= dt;
+  if (G.hintT > 0) G.hintT -= dt;
+  if (G.teach) {
+    G.teach.t += dt;
+    if (G.teach.t > 3) G.teach = null;
+  }
+  if (G.evo) {
+    G.evo.t += dt;
+    if (G.evo.t > (G.bot ? 0.3 : 1.7)) G.evo = null;
+  }
+  for (let i = G.flames.length - 1; i >= 0; i--) {
+    G.flames[i].t += dt;
+    if (G.flames[i].t > 0.3) G.flames.splice(i, 1);
+  }
+  if (G.result) {
+    G.result.t += dt;
+    if (G.result.upFlash > 0) G.result.upFlash -= dt;
+  }
+  render();
+}
+
+function stepFx(dt) {
+  for (let i = G.fx.length - 1; i >= 0; i--) {
+    const f = G.fx[i];
+    f.t += dt;
+    if (f.t >= f.life) {
+      G.fx.splice(i, 1);
+      continue;
+    }
+    f.x += f.vx * dt;
+    f.y += f.vy * dt;
+    if (f.k === 'chunk' || f.k === 'car') f.vy += 520 * dt;
+    if (f.k === 'puff') f.vx *= 0.96;
+    if (f.k === 'car') f.rot += f.vr * dt;
+  }
+  for (let i = G.pops.length - 1; i >= 0; i--) {
+    const p = G.pops[i];
+    p.t += dt;
+    p.y -= 30 * dt;
+    if (p.t >= p.life) G.pops.splice(i, 1);
+  }
+  G.shake *= Math.pow(0.002, dt);
+  if (G.shake < 0.2) G.shake = 0;
+  if (G.flash > 0) G.flash -= dt;
+}
+
+// —— 画 ——
+function render() {
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = '#120d0a';
+  ctx.fillRect(0, 0, W, H);
+  ctx.save();
+  ctx.translate(ox, oy);
+  ctx.scale(scale, scale);
+  ctx.beginPath();
+  ctx.rect(0, 0, F.w, F.h);
+  ctx.clip();
+  const sh = G.shake;
+  ctx.translate((Math.random() - 0.5) * sh, (Math.random() - 0.5) * sh);
+  drawWorld();
+  ctx.restore();
+  ctx.save();
+  ctx.translate(ox, oy);
+  ctx.scale(scale, scale);
+  drawHud();
+  if (G.mode === 'result') drawResult();
+  ctx.restore();
+}
+
+function drawWorld() {
+  const st = G.st;
+  const ch = S.chapter(st);
+  const t = G.t;
+  D.drawGround(ctx, ch, st.head.wy);
+  const vis = (wy, m) => {
+    const y = sy(wy);
+    return y > -m && y < F.h + m;
+  };
+  for (const f of st.fences) {
+    if (vis((f.wy0 + f.wy1) / 2, 160)) D.drawFence(ctx, f.x, sy(f.wy1), sy(f.wy0));
+  }
+  for (const it of st.items) if (it.alive && vis(it.wy, 40)) D.drawItem(ctx, it, sy(it.wy), t);
+  for (const b of st.blocks) {
+    if (!b.alive || !vis(b.wy, 200)) continue;
+    const chewing = st.chewing === b && st.mode === 'play';
+    D.drawBlock(ctx, ch, b, sy(b.wy), t, chewing ? 2.5 : 0, S.phased(st, b));
+  }
+  for (const f of st.foes) if (f.alive && vis(f.wy, 40)) D.drawFoe(ctx, f, sy(f.wy), t);
+  for (const bo of st.bolts) D.drawBolt(ctx, bo.x, sy(bo.wy));
+  for (const sh of st.shots) D.drawShot(ctx, sh.x, sy(sh.wy));
+  for (const fl of G.flames) D.drawFlame(ctx, fl.x, sy(fl.wy0), sy(fl.wy1), 1 - fl.t / 0.3, fl.lv);
+  drawDragon(st, t);
+  for (const f of G.fx) drawFx(f);
+  drawLenTag(st);
+  for (const p of G.pops) {
+    ctx.save();
+    ctx.globalAlpha = clamp(1 - (p.t / p.life - 0.6) / 0.4, 0, 1);
+    const k = easeOutBack(Math.min(1, p.t / 0.18));
+    bigText(ctx, p.text, p.x, p.y, p.size * k, p.col, D.LINE);
+    ctx.restore();
+  }
+  if (G.flash > 0) {
+    ctx.fillStyle = G.flashColor;
+    ctx.globalAlpha = Math.min(0.5, G.flash);
+    ctx.fillRect(0, 0, F.w, F.h);
+    ctx.globalAlpha = 1;
+  }
+}
+
+function drawDragon(st, t) {
+  if (st.len <= 0 && G.mode !== 'play') return;
+  const segs = S.segments(st, 60);
+  const pts = segs.map((p) => ({ x: p.x, y: sy(p.wy) }));
+  // 车厢之间的铁链
+  ctx.strokeStyle = D.LINE;
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  pts.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
+  ctx.stroke();
+  const hurt = G.flash > 0 && G.flashColor === '#ff4a2a' ? G.flash * 4 : 0;
+  // 头上的改装（喷火、铜牙）不占车厢；其余按拿到的顺序挂在第 1、2、3… 节
+  const specialAt = {};
+  let slot = 1;
+  for (const id of st.carOrder) if (id !== 'fire' && id !== 'tooth' && slot < pts.length) specialAt[slot++] = id;
+  for (let i = pts.length - 1; i >= 1; i--) {
+    const p = pts[i];
+    const q = pts[i - 1];
+    const a = Math.atan2(q.x - p.x, p.y - q.y);
+    D.drawCar(ctx, p.x, p.y, a, i, t, hurt);
+    const sid = specialAt[i];
+    if (sid) D.drawSpecialCar(ctx, sid, p.x, p.y, a, st.cars[sid], t, st.armor);
+    // 小烟囱冒汽
+    if (i % 3 === 1 && Math.random() < 0.012) puff(p.x, p.y - 4, 1, 'rgba(240,236,228,0.45)');
+  }
+  const hd = pts[0];
+  const nx = pts[1] || { x: hd.x, y: hd.y + 10 };
+  D.drawHead(ctx, hd.x, hd.y, Math.atan2(hd.x - nx.x, nx.y - hd.y), st.chewing ? 1 : 0, t, st.shield);
+  if (st.magnet > 0) {
+    ctx.save();
+    ctx.globalAlpha = 0.25;
+    ctx.strokeStyle = '#ff6a4a';
+    ctx.setLineDash([4, 6]);
+    ctx.beginPath();
+    ctx.arc(hd.x, hd.y, 60 + (t * 60) % 40, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+// 头上的节数（画在碎石上面，永远看得清）
+function drawLenTag(st) {
+  if (st.len <= 0) return;
+  const x = st.head.x;
+  const y = C.HEAD_Y - 36;
+  const danger = st.chewing && st.chewing.n >= st.len;
+  ctx.fillStyle = danger ? 'rgba(120,20,10,0.8)' : 'rgba(20,14,10,0.6)';
+  roundRect(ctx, x - 20, y - 13, 40, 26, 9);
+  ctx.fill();
+  bigText(ctx, String(st.len), x, y, 20, danger ? '#ff8a6a' : '#fff8e6', D.LINE);
+}
+
+function drawFx(f) {
+  const a = 1 - f.t / f.life;
+  ctx.save();
+  ctx.globalAlpha = clamp(a * 1.4, 0, 1);
+  if (f.k === 'chunk') {
+    ctx.translate(f.x, f.y);
+    ctx.rotate(f.rot + f.t * 8);
+    ctx.fillStyle = f.col;
+    ctx.strokeStyle = D.LINE;
+    ctx.lineWidth = 1;
+    ctx.fillRect(-f.s / 2, -f.s / 2, f.s, f.s);
+    ctx.strokeRect(-f.s / 2, -f.s / 2, f.s, f.s);
+  } else if (f.k === 'puff') {
+    ctx.fillStyle = f.col;
+    ctx.beginPath();
+    ctx.arc(f.x, f.y, f.s * (1 + f.t * 2), 0, Math.PI * 2);
+    ctx.fill();
+  } else if (f.k === 'spark') {
+    ctx.strokeStyle = f.col;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(f.x, f.y);
+    ctx.lineTo(f.x - f.vx * 0.04, f.y - f.vy * 0.04);
+    ctx.stroke();
+  } else if (f.k === 'car') {
+    ctx.translate(f.x, f.y);
+    ctx.rotate(f.rot);
+    ctx.fillStyle = D.BRASS;
+    ctx.strokeStyle = D.LINE;
+    ctx.lineWidth = 1.5;
+    roundRect(ctx, -10, -10, 20, 20, 5);
+    ctx.fill();
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawHud() {
+  const st = G.st;
+  const ch = S.chapter(st);
+  // 顶栏：第几关 · 地方 + 离城门多远
+  ctx.fillStyle = 'rgba(20,14,10,0.72)';
+  ctx.fillRect(0, 0, F.w, 46);
+  bigText(ctx, '第' + (st.lv.idx + 1) + '关 · ' + ch.name, 52, 16, 14, '#fff8e6', D.LINE, 'left');
+  const prog = clamp(st.head.wy / (st.endWY - 60), 0, 1);
+  const bx = 52;
+  const bw = F.w - 120;
+  ctx.fillStyle = '#3a2c20';
+  roundRect(ctx, bx, 30, bw, 8, 4);
+  ctx.fill();
+  ctx.fillStyle = D.BRASS;
+  roundRect(ctx, bx, 30, Math.max(8, bw * prog), 8, 4);
+  ctx.fill();
+  // 终点小城门
+  ctx.fillStyle = D.RED;
+  ctx.strokeStyle = D.LINE;
+  ctx.lineWidth = 1.5;
+  roundRect(ctx, bx + bw + 4, 24, 18, 18, 3);
+  ctx.fill();
+  ctx.stroke();
+  bigText(ctx, String(st.gate.n), bx + bw + 40, 33, 14, '#ffd65a', D.LINE);
+  // 声音开关
+  bigText(ctx, meta.muted ? '静' : '♪', 22, 22, 16, '#fff8e6', D.LINE);
+  // 道具剩余时间
+  let ix = F.w - 30;
+  for (const k of ['shield', 'magnet']) {
+    if (st[k] > 0) {
+      D.drawPowerIcon(ctx, k, ix, 70, 0.8);
+      bigText(ctx, Math.ceil(st[k]) + '', ix, 92, 12, '#fff8e6', D.LINE);
+      ix -= 36;
+    }
+  }
+  // 开局横幅
+  if (G.banner > 0 && G.mode === 'play') {
+    const k = easeOutBack(clamp((1.6 - G.banner) / 0.3, 0, 1));
+    ctx.save();
+    ctx.globalAlpha = clamp(G.banner / 0.3, 0, 1);
+    ctx.fillStyle = 'rgba(20,14,10,0.78)';
+    ctx.fillRect(0, 230, F.w, 92);
+    bigText(ctx, ch.name + ' · 冲破城门！', F.w / 2, 262, 26 * k, '#ffd65a', D.LINE);
+    bigText(ctx, '城门 ' + st.gate.n0 + ' · 你有 ' + st.len + ' 节', F.w / 2, 298, 16, '#fff8e6', D.LINE);
+    ctx.restore();
+  }
+  if (G.teach && G.mode === 'play') drawTeach();
+  if (st.mode === 'cards' && G.mode === 'play') drawCards(st);
+  if (G.evo) drawEvo();
+  // 第一次玩：教一下
+  if (G.hintT > 0 && G.mode === 'play' && G.banner <= 0) {
+    ctx.save();
+    ctx.globalAlpha = clamp(G.hintT, 0, 1);
+    const hx = F.w / 2 + Math.sin(G.t * 3) * 60;
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.beginPath();
+    ctx.arc(hx, 640, 16, 0, Math.PI * 2);
+    ctx.fill();
+    bigText(ctx, '按住左右拖 · 吃零件变长 · 撞数字小的砖', F.w / 2, 600, 14, '#fff8e6', D.LINE);
+    ctx.restore();
+  }
+}
+
+function drawTeach() {
+  const T = G.teach;
+  const k = easeOutBack(clamp(T.t / 0.25, 0, 1));
+  const a = clamp((3 - T.t) / 0.3, 0, 1);
+  ctx.save();
+  ctx.globalAlpha = a;
+  ctx.translate(F.w / 2, 92);
+  ctx.scale(k, k);
+  ctx.fillStyle = T.boss ? 'rgba(120,24,14,0.92)' : 'rgba(26,18,12,0.9)';
+  ctx.strokeStyle = T.boss ? '#ffb04a' : D.BRASS;
+  ctx.lineWidth = 2;
+  roundRect(ctx, -162, -30, 324, 62, 12);
+  ctx.fill();
+  ctx.stroke();
+  bigText(ctx, (T.boss ? 'Boss！' : '新敌人：') + T.name, 0, -10, 18, T.boss ? '#ffd65a' : '#ffe9b0', D.LINE);
+  bigText(ctx, T.tip, 0, 16, 12, '#fff8e6', D.LINE);
+  ctx.restore();
+}
+
+function drawCards(st) {
+  G.cardRects.length = 0;
+  ctx.fillStyle = 'rgba(10,6,4,0.75)';
+  ctx.fillRect(0, 0, F.w, F.h);
+  const k0 = clamp((PF.now() - G.cardsAt) / 250, 0, 1);
+  bigText(ctx, '机关匣！挑一节车厢', F.w / 2, 150, 24 * easeOutBack(k0), '#ffd65a', D.LINE);
+  st.cards.forEach((id, i) => {
+    const car = C.CARS.find((c) => c.id === id);
+    const lv = (st.cars[id] || 0) + 1;
+    const x = 30;
+    const w = F.w - 60;
+    const h = 112;
+    const y = 190 + i * 128;
+    const k = easeOutBack(clamp((PF.now() - G.cardsAt - i * 70) / 260, 0, 1));
+    G.cardRects.push({ x, y, w, h });
+    ctx.save();
+    ctx.translate(F.w / 2, y + h / 2);
+    ctx.scale(k, k);
+    ctx.translate(-F.w / 2, -(y + h / 2));
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    roundRect(ctx, x + 3, y + 5, w, h, 14);
+    ctx.fill();
+    ctx.fillStyle = lv >= 3 ? '#7a4a12' : '#3a2a1e';
+    ctx.strokeStyle = lv >= 3 ? '#ffd65a' : D.BRASS;
+    ctx.lineWidth = 2.5;
+    roundRect(ctx, x, y, w, h, 14);
+    ctx.fill();
+    ctx.stroke();
+    D.drawCarIcon(ctx, id, x + 52, y + h / 2 + 6, 1.5, G.t);
+    const tag = lv === 1 ? '新' : lv >= 3 ? '进化！' : 'Lv' + lv;
+    bigText(ctx, lv >= 3 ? car.evo : car.name, x + 106, y + 32, 20, '#fff8e6', D.LINE, 'left');
+    ctx.fillStyle = lv >= 3 ? '#c8402c' : '#4f7a3a';
+    roundRect(ctx, x + w - 70, y + 14, 58, 26, 13);
+    ctx.fill();
+    bigText(ctx, tag, x + w - 41, y + 27, 13, '#fff8e6', D.LINE);
+    wrapText(car.lv[lv - 1], x + 106, y + 66, w - 120, 13);
+    ctx.restore();
+  });
+}
+
+// 一行太长就折成两行
+function wrapText(text, x, y, maxW, size) {
+  ctx.font = '900 ' + size + 'px "PingFang SC", "Heiti SC", sans-serif';
+  const chars = text.split('');
+  let line = '';
+  let yy = y;
+  for (const c of chars) {
+    if (ctx.measureText(line + c).width > maxW) {
+      bigText(ctx, line, x, yy, size, '#ffe9c4', D.LINE, 'left');
+      line = c;
+      yy += size + 6;
+    } else line += c;
+  }
+  if (line) bigText(ctx, line, x, yy, size, '#ffe9c4', D.LINE, 'left');
+}
+
+// 进化（简单版：定格、放大、转光、新名字；《潜水员戴夫》升级动画拆完后照着换）
+function drawEvo() {
+  const E = G.evo;
+  const t = E.t;
+  ctx.fillStyle = 'rgba(10,6,4,' + Math.min(0.8, t * 3) + ')';
+  ctx.fillRect(0, 0, F.w, F.h);
+  ctx.save();
+  ctx.translate(F.w / 2, 320);
+  ctx.rotate(t * 1.5);
+  for (let i = 0; i < 12; i++) {
+    ctx.rotate(Math.PI / 6);
+    ctx.fillStyle = 'rgba(255,214,90,' + 0.18 * Math.min(1, t * 2) + ')';
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(-18, -260);
+    ctx.lineTo(18, -260);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
+  const k = t < 0.35 ? easeOutBack(t / 0.35) * 2.4 : 2.4 + Math.sin(t * 6) * 0.05;
+  D.drawCarIcon(ctx, E.id, F.w / 2, 330, k, G.t);
+  if (t < 0.12) {
+    ctx.fillStyle = 'rgba(255,255,255,' + (1 - t / 0.12) + ')';
+    ctx.fillRect(0, 0, F.w, F.h);
+  }
+  const k2 = easeOutBack(clamp((t - 0.3) / 0.3, 0, 1));
+  bigText(ctx, '进化！', F.w / 2, 190, 34 * k2, '#ffd65a', D.LINE);
+  bigText(ctx, E.name, F.w / 2, 460, 30 * k2, '#fff8e6', D.LINE);
+}
+
+function button(id, x, y, w, h, label, col, sub) {
+  G.buttons.push({ id, x, y, w, h });
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  roundRect(ctx, x + 3, y + 5, w, h, 14);
+  ctx.fill();
+  ctx.fillStyle = col;
+  ctx.strokeStyle = D.LINE;
+  ctx.lineWidth = 2.5;
+  roundRect(ctx, x, y, w, h, 14);
+  ctx.fill();
+  ctx.stroke();
+  bigText(ctx, label, x + w / 2, y + h / 2 - (sub ? 8 : 0), sub ? 18 : h < 40 ? 15 : 26, '#fff8e6', D.LINE);
+  if (sub) bigText(ctx, sub, x + w / 2, y + h / 2 + 16, 13, '#ffe9b0', D.LINE);
+}
+
+function drawResult() {
+  const r = G.result;
+  G.buttons.length = 0;
+  ctx.fillStyle = 'rgba(12,8,6,0.84)';
+  ctx.fillRect(0, 0, F.w, F.h);
+  const k = easeOutBack(clamp(r.t / 0.3, 0, 1));
+  if (r.win) {
+    bigText(ctx, '城门破了！', F.w / 2, 200, 44 * k, '#ffd65a', D.LINE);
+    bigText(ctx, '最长 ' + r.maxLen + ' 节', F.w / 2, 252, 18, '#fff8e6', D.LINE);
+  } else {
+    const title = r.short > 0 ? '差 ' + r.short + ' 节！' : '龙被拆光了';
+    bigText(ctx, title, F.w / 2, 200, 44 * k, '#ff8a5a', D.LINE);
+    bigText(ctx, '离城门还有 ' + r.left + ' 排', F.w / 2, 252, 18, '#fff8e6', D.LINE);
+    ctx.fillStyle = '#3a2c20';
+    roundRect(ctx, 70, 270, F.w - 140, 8, 4);
+    ctx.fill();
+    ctx.fillStyle = D.BRASS;
+    roundRect(ctx, 70, 270, Math.max(8, (F.w - 140) * r.prog), 8, 4);
+    ctx.fill();
+  }
+  D.drawGear(ctx, F.w / 2 - 78, 312, 12, G.t);
+  bigText(ctx, '+' + r.coins + '   共 ' + meta.coins, F.w / 2 + 14, 312, 20, '#ffd65a', D.LINE);
+  button('menu', F.w - 100, 14, 88, 34, '换玩法', '#4a3a2c');
+  button(r.win ? 'next' : 'again', 60, 360, F.w - 120, 78, r.win ? '下一关' : '再来！', r.win ? '#3f8a3a' : '#c8402c');
+  const NOW = {
+    startLen: () => '现在 ' + (C.START_LEN + meta.startLv) + ' 节',
+    startCard: () => (meta.cardLv ? '已有' : '开局先挑一节车厢'),
+    partLuck: () => '现在 ' + meta.partLv * 10 + '%',
+  };
+  Object.keys(C.UPGRADES).forEach((key, i) => {
+    const u = C.UPGRADES[key];
+    const lv = meta[UP_META[key]];
+    const max = lv >= u.max;
+    const cost = u.cost(lv);
+    const can = !max && meta.coins >= cost;
+    button('up_' + key, 40, 458 + i * 74, F.w - 80, 64, max ? u.name + '（满）' : u.name, can ? '#b07a1e' : '#5a4a3a', NOW[key]() + (max ? '' : ' · 要 ' + cost + ' 铜钱'));
+  });
+  if (r.upFlash > 0) {
+    ctx.save();
+    ctx.globalAlpha = r.upFlash;
+    bigText(ctx, (r.upName || '') + ' ✓', F.w / 2, 690, 18, '#9dff7a', D.LINE);
+    ctx.restore();
+  }
+}
+
+startRun();
+SH.register('ram', { onTouch, frame, enter: () => (last = PF.now()) });
+PF.exposeForTest('__ram', { G, meta, S, C, startRun, press, saveMeta, scale, ox, oy });
+
+});
+__def("js/ram/sim.js", function (module, exports, require) {
+// 《墨守》0.4「你当机关龙」· 规则（不碰画面，node 里也能跑，机器人靠它量数）
+// 坐标：x 是横向 0–360；wy 是「往上走了多远」，龙头 wy 一直变大，画面跟着往下滚。
+const C = require('./config.js');
+const { rng, clamp } = require('../util.js');
+
+const HALF = C.BLOCK / 2;
+const laneX = (i) => C.CELL * i + C.CELL / 2;
+
+// —— 生成一整关（同一个 seed 永远一样）——
+function buildLevel(lv, R) {
+  const blocks = [];
+  const fences = [];
+  const items = [];
+  const foes = [];
+  const rows = []; // 每排的 wy（算速度和「第几排」用）
+  let wy = 230;
+  let bi = 0;
+  let gi = 0;
+  let fi = 0;
+  let firstBlock = true;
+  let powerAt = 0;
+  let pi = 0;
+  let gapN = 0;
+  const counts = C.BLOCK_COUNTS.slice();
+  for (let r = 0; r < lv.rows; r++) {
+    const num = lv.num + Math.floor(r / C.NUM_EVERY);
+    if (r % 2 === 0) {
+      // 空地：栅栏 + 零件（+ 道具）
+      const h = C.GAP_ROWS[gi++ % C.GAP_ROWS.length] * C.CELL;
+      const nf = C.FENCES[fi++ % C.FENCES.length];
+      const bounds = [1, 2, 3, 4].sort(() => R() - 0.5).slice(0, nf);
+      bounds.forEach((k) => {
+        const len = C.CELL * (R() < 0.5 ? 1.2 : 2);
+        const y0 = wy + 10 + R() * Math.max(0, h - len - 20);
+        fences.push({ x: C.CELL * k, wy0: y0, wy1: y0 + len });
+      });
+      const nb = r === 0 ? 2 : 1 + Math.floor(R() * 3);
+      for (let k = 0; k < nb; k++) {
+        items.push({ kind: 'part', x: laneX(Math.floor(R() * C.LANES)) + (R() < 0.5 ? -14 : 14), wy: wy + 30 + R() * (h - 60), n: 1 + Math.floor(R() * (r < 6 ? 3 : r < 24 ? 4 : 5)), alive: true });
+      }
+      gapN++;
+      if (gapN % C.CHEST_EVERY === 2) items.push({ kind: 'chest', x: laneX(Math.floor(R() * C.LANES)), wy: wy + h * 0.6, n: 0, alive: true });
+      else if (wy - powerAt > C.POWER_EVERY * lv.v && r > 1) {
+        powerAt = wy;
+        items.push({ kind: C.POWERS[pi++ % C.POWERS.length], x: laneX(Math.floor(R() * C.LANES)), wy: wy + h / 2, n: 0, alive: true });
+      }
+      const T = lv.types || {};
+      if (T.rock && r > 2 && R() < T.rock) blocks.push({ kind: 'brick', type: 'rock', x: laneX(Math.floor(R() * C.LANES)), wy: wy + h - 20, n: 2 + Math.floor(R() * num), alive: true, num });
+      if (lv.foe && r > 2 && R() < lv.foe) foes.push({ x: 30 + R() * 300, wy: wy + h * 0.45, vx: (R() < 0.5 ? -1 : 1) * (55 + R() * 30 + (lv.elite || 0) * 20), alive: true, stun: 0 });
+      rows.push(wy);
+      wy += h;
+    } else {
+      // 一排方块
+      if (bi % counts.length === 0) counts.sort(() => R() - 0.5);
+      const cnt = firstBlock ? 1 + Math.floor(R() * 3) : counts[bi++ % counts.length];
+      firstBlock = false;
+      const lanes = [0, 1, 2, 3, 4].sort(() => R() - 0.5).slice(0, cnt);
+      const vals = lanes.map((_, k) => (k === 0 && R() < 0.5 ? 1 + Math.floor(R() * num * 2) : 1 + Math.floor(R() * num)));
+      // 整排堵死时保证有一格小的（原作是碰运气，我们不让玩家死得冤）
+      if (cnt === 5) {
+        const lo = Math.max(1, Math.ceil(num / 3));
+        const m = vals.indexOf(Math.min.apply(null, vals));
+        if (vals[m] > lo) vals[m] = 1 + Math.floor(R() * lo);
+      }
+      lanes.forEach((ln, k) => {
+        const tower = r > 2 && R() < lv.tower;
+        let type = null;
+        if (!tower && r > 1) {
+          for (const [ty, pr] of Object.entries(lv.types || {})) if (ty !== 'rock' && !type && R() < pr) type = ty;
+        }
+        const n = tower ? Math.max(2, Math.ceil(vals[k] * 0.8)) : type === 'powder' ? 1 + Math.floor(R() * 3) : vals[k];
+        blocks.push({ kind: tower ? 'tower' : 'brick', type, x: laneX(ln), wy: wy + HALF, n, n0: 0, alive: true, cd: C.TOWER.first + R() * 0.8, num, ph: R() * 2.4, rg: 0 });
+      });
+      rows.push(wy);
+      wy += C.CELL;
+    }
+  }
+  // 城门前补给：一段空地，三颗大零件
+  for (let k = 0; k < 3; k++) items.push({ kind: 'part', x: laneX(1 + k), wy: wy + 60 + k * 30, n: 3 + Math.floor(R() * 3), alive: true });
+  wy += C.CELL * 3;
+  rows.push(wy);
+  const gate = { kind: 'gate', boss: lv.boss || null, x: C.FIELD.w / 2, wy: wy + HALF, n: lv.gate, n0: lv.gate, alive: true, cd: 1, rg: 0 };
+  if (gate.boss === 'beast') gate.door = { x: C.FIELD.w / 2, w: 112, vx: 70 + (lv.elite || 0) * 20 };
+  blocks.push(gate);
+  blocks.forEach((b) => (b.n0 = b.n));
+  return { blocks, fences, items, foes, rows, gate, endWY: gate.wy };
+}
+
+function newRun(levelIdx, meta, seed) {
+  const lv = C.level(levelIdx);
+  const R = rng(seed || 1);
+  const L = buildLevel(lv, R);
+  const startLen = C.START_LEN + ((meta && meta.startLv) || 0);
+  const head = { x: laneX(2), wy: 0 };
+  const trail = [];
+  for (let i = 0; i <= startLen * C.SEG + 40; i += 2) trail.push({ x: head.x, wy: -i });
+  trail.reverse();
+  return {
+    lv, R, t: 0, mode: 'play',
+    head, targetX: head.x, len: startLen, startLen, maxLen: startLen,
+    trail,
+    blocks: L.blocks, fences: L.fences, items: L.items, foes: L.foes, seen: {}, rows: L.rows, gate: L.gate, endWY: L.endWY,
+    bolts: [], chewing: null, chewT: 0, combo: 0,
+    shield: 0, magnet: 0,
+    score: 0, parts: 0, broke: 0, towersBroke: 0, boltHits: 0,
+    events: [], short: 0,
+    cars: {}, carOrder: [], cards: null, picks: 0,
+    armor: 0, armorT: 0, fireCd: 1, bowCd: 1, shots: [], chewN: 0,
+    partLuck: ((meta && meta.partLv) || 0) * 0.1,
+    pendingCards: meta && meta.cardLv ? 1 : 0,
+  };
+}
+
+// —— 三选一：特殊车厢 ——
+const carLv = (st, id) => st.cars[id] || 0;
+function openCards(st) {
+  const pool = C.CARS.filter((c) => {
+    const lv = carLv(st, c.id);
+    if (lv >= 3) return false;
+    return lv > 0 || st.carOrder.length < C.MAX_CARS;
+  });
+  if (!pool.length) {
+    st.len += 5;
+    ev(st, { t: 'part', x: st.head.x, wy: st.head.wy + 20, n: 5 });
+    return;
+  }
+  const pick = [];
+  const left = pool.slice();
+  while (pick.length < 3 && left.length) pick.push(left.splice(Math.floor(st.R() * left.length), 1)[0].id);
+  st.cards = pick;
+  st.mode = 'cards';
+  ev(st, { t: 'cards' });
+}
+function pick(st, i) {
+  if (st.mode !== 'cards' || !st.cards || !st.cards[i]) return;
+  const id = st.cards[i];
+  const lv = carLv(st, id) + 1;
+  st.cars[id] = lv;
+  if (lv === 1) st.carOrder.push(id);
+  if (id === 'armor') st.armor = armorMax(st);
+  st.cards = null;
+  st.mode = 'play';
+  st.picks++;
+  ev(st, { t: 'pick', id, lv, evo: lv === 3 });
+}
+const armorMax = (st) => [0, 2, 3, 5][carLv(st, 'armor')];
+
+const chapter = (st) => C.CHAPTERS[st.lv.ch];
+// 幽影砖：2.4 秒一轮，实 1.4 秒、虚 1.0 秒
+const phased = (st, b) => b.type === 'ghost' && (st.t + b.ph) % 2.4 > 1.4;
+function rowIndex(st) {
+  let i = 0;
+  while (i < st.rows.length && st.rows[i] < st.head.wy) i++;
+  return i;
+}
+function speedNow(st) {
+  return st.lv.v + C.V_EVERY * Math.floor(rowIndex(st) / C.NUM_EVERY);
+}
+
+// 车厢位置：沿龙头走过的路往回量
+function segments(st, max) {
+  const out = [{ x: st.head.x, wy: st.head.wy }];
+  const n = Math.min(st.len, max || 999);
+  let need = C.SEG;
+  let px = st.head.x;
+  let py = st.head.wy;
+  for (let i = st.trail.length - 1; i >= 0 && out.length < n; i--) {
+    const p = st.trail[i];
+    let d = Math.hypot(px - p.x, py - p.wy);
+    while (d >= need && out.length < n) {
+      const t = need / d;
+      px = px + (p.x - px) * t;
+      py = py + (p.wy - py) * t;
+      out.push({ x: px, wy: py });
+      d = Math.hypot(px - p.x, py - p.wy);
+      need = C.SEG;
+    }
+    need -= d;
+    px = p.x;
+    py = p.wy;
+  }
+  return out;
+}
+
+function ev(st, e) {
+  st.events.push(e);
+}
+
+function breakBlock(st, b, how) {
+  b.alive = false;
+  st.broke++;
+  st.score += b.n0 * 10;
+  if (b.kind === 'tower') {
+    st.towersBroke++;
+    // 拆了弩塔崩出零件
+    for (let k = 0; k < 3; k++) st.items.push({ kind: 'part', x: clamp(b.x + (k - 1) * 22, 16, C.FIELD.w - 16), wy: b.wy + 26 + k * 6, n: 1, alive: true, pop: 0.4 });
+    st.items.push({ kind: 'chest', x: b.x, wy: b.wy + 10, n: 0, alive: true, pop: 0.5 });
+  }
+  if (b.type === 'powder') {
+    const self = how === 'chew';
+    ev(st, { t: 'kaboom', x: b.x, wy: b.wy, self });
+    if (self && st.shield <= 0) {
+      st.len -= 3;
+      if (st.len <= 0) lose(st, 0);
+    }
+    for (const o of st.blocks) {
+      if (!o.alive || o.kind === 'gate' || Math.abs(o.wy - b.wy) > 4 || Math.abs(Math.abs(o.x - b.x) - C.CELL) > 4) continue;
+      o.n -= 4;
+      if (o.n <= 0) breakBlock(st, o, 'boom');
+    }
+  }
+  const pw = carLv(st, 'powder');
+  if (pw && b.kind !== 'gate' && (how !== 'powder' || pw >= 3)) {
+    const dmg = [0, 3, 4, 6][pw];
+    ev(st, { t: 'powder', x: b.x, wy: b.wy });
+    for (const o of st.blocks) {
+      if (!o.alive || o.kind === 'gate' || Math.abs(o.wy - b.wy) > 4 || Math.abs(Math.abs(o.x - b.x) - C.CELL) > 4) continue;
+      o.n -= dmg;
+      if (o.n <= 0) breakBlock(st, o, 'powder');
+    }
+  }
+  ev(st, { t: 'break', x: b.x, wy: b.wy, n0: b.n0, kind: b.kind, how: how || 'chew' });
+  if (b.kind === 'gate') {
+    st.mode = 'win';
+    st.score += st.len * 20;
+    ev(st, { t: 'win' });
+  }
+}
+
+function lose(st, short) {
+  if (st.mode !== 'play') return;
+  st.mode = 'lose';
+  st.short = short || 0;
+  ev(st, { t: 'lose', short: st.short });
+}
+
+// 横着动：栅栏和旁边的方块挡住
+function steer(st, dt) {
+  const h = st.head;
+  const r = C.HEAD_R;
+  const want = clamp(st.targetX, r + 3, C.FIELD.w - r - 3);
+  let nx = h.x + clamp(want - h.x, -C.STEER_MAX * dt, C.STEER_MAX * dt);
+  for (const f of st.fences) {
+    if (h.wy + r > f.wy0 && h.wy - r < f.wy1) {
+      if (h.x <= f.x && nx > f.x - r - 3) nx = Math.min(nx, f.x - r - 3);
+      if (h.x >= f.x && nx < f.x + r + 3) nx = Math.max(nx, f.x + r + 3);
+    }
+  }
+  for (const b of st.blocks) {
+    if (!b.alive || b.kind === 'gate' || phased(st, b)) continue;
+    if (Math.abs(h.wy - b.wy) < HALF + r * 0.4) {
+      if (h.x <= b.x - HALF && nx > b.x - HALF - r) nx = Math.min(nx, b.x - HALF - r);
+      if (h.x >= b.x + HALF && nx < b.x + HALF + r) nx = Math.max(nx, b.x + HALF + r);
+    }
+  }
+  h.x = nx;
+}
+
+// 往前冲：碰到方块就停下啃
+function advance(st, dt) {
+  const h = st.head;
+  const r = C.HEAD_R;
+  const next = h.wy + speedNow(st) * dt;
+  let hit = null;
+  let hitD = 1e9;
+  for (const b of st.blocks) {
+    if (!b.alive || phased(st, b)) continue;
+    const front = b.wy - HALF - r;
+    if (front < h.wy - 0.5 || front > next) continue;
+    const dx = b.kind === 'gate' ? 0 : Math.abs(h.x - b.x);
+    if (dx >= HALF + r * 0.55) continue;
+    const d = (front - h.wy) * 1000 + dx;
+    if (d < hitD) {
+      hitD = d;
+      hit = b;
+    }
+  }
+  if (hit) {
+    h.wy = hit.wy - HALF - r;
+    if (st.chewing !== hit) {
+      if (!st.chewing) ev(st, { t: 'bump', x: hit.x, wy: hit.wy, kind: hit.kind });
+      if (hit.kind === 'gate' && !st.reachedGate) st.reachedGate = st.len;
+      st.chewing = hit;
+      st.chewT = 0;
+    }
+  } else {
+    h.wy = next;
+    if (st.chewing) st.combo = 0;
+    st.chewing = null;
+  }
+  // 撞到栅栏的下端：往原来那边推开
+  for (const f of st.fences) {
+    if (h.wy + r > f.wy0 && h.wy - r < f.wy1 && Math.abs(h.x - f.x) < r + 3) {
+      h.x = h.x < f.x ? f.x - r - 3 : f.x + r + 3;
+    }
+  }
+}
+
+function chew(st, dt) {
+  const b = st.chewing;
+  if (!b || !b.alive) return;
+  if (phased(st, b)) {
+    st.chewing = null;
+    return;
+  }
+  b.rg = 0;
+  if (b.door && Math.abs(st.head.x - b.door.x) > b.door.w / 2) {
+    st.clankT = (st.clankT || 0) - dt;
+    if (st.clankT <= 0) {
+      st.clankT = 0.35;
+      ev(st, { t: 'clank', x: st.head.x, wy: b.wy - HALF });
+    }
+    return;
+  }
+  if (st.shield > 0 && b.kind !== 'gate') {
+    breakBlock(st, b, 'shield');
+    st.chewing = null;
+    return;
+  }
+  // 大方块啃得快一点，不拖
+  const tooth = carLv(st, 'tooth');
+  const each = C.CHEW * (b.kind === 'gate' ? 0.75 : clamp(9 / b.n0, 0.45, 1)) * [1, 0.7, 0.6, 0.5][tooth];
+  st.chewT += dt;
+  while (st.chewT >= each && b.alive && st.mode === 'play') {
+    st.chewT -= each;
+    b.n--;
+    st.chewN++;
+    const free = tooth && st.chewN % (tooth >= 3 ? 2 : 3) === 0;
+    if (!free) st.len--;
+    st.combo++;
+    ev(st, { t: 'chew', x: b.x, wy: b.wy, n: b.n, kind: b.kind, combo: st.combo, hx: st.head.x, free });
+    if (b.n <= 0) breakBlock(st, b);
+    if (st.len <= 0) lose(st, b.alive ? b.n : 0);
+  }
+}
+
+function stepItems(st, dt) {
+  const h = st.head;
+  for (const it of st.items) {
+    if (!it.alive) continue;
+    if (it.pop > 0) {
+      it.pop -= dt;
+      it.wy += 60 * dt;
+    }
+    const dy = it.wy - h.wy;
+    const mr = st.magnet > 0 ? 200 : [0, 170, 260, 900][carLv(st, 'magnet')];
+    if (mr && it.kind === 'part' && dy > -40 && dy < mr) {
+      const d = Math.hypot(it.x - h.x, dy) || 1;
+      const pull = Math.min(d, 520 * dt);
+      it.x -= ((it.x - h.x) / d) * pull;
+      it.wy -= (dy / d) * pull;
+    }
+    if (Math.hypot(it.x - h.x, it.wy - h.wy) < C.HEAD_R + 15) {
+      it.alive = false;
+      if (it.kind === 'chest') {
+        ev(st, { t: 'chest', x: it.x, wy: it.wy });
+        openCards(st);
+        continue;
+      }
+      if (it.kind === 'part') {
+        const extra = [0, 1, 2, 3][carLv(st, 'forge')] + (st.R() < st.partLuck ? 1 : 0);
+        st.len += it.n + extra;
+        st.parts += it.n + extra;
+        st.maxLen = Math.max(st.maxLen, st.len);
+        ev(st, { t: 'part', x: it.x, wy: it.wy, n: it.n + extra });
+      } else if (it.kind === 'bomb') {
+        let cnt = 0;
+        for (const b of st.blocks) {
+          if (b.alive && b.kind !== 'gate' && b.wy > h.wy - 20 && b.wy < h.wy + 460) {
+            breakBlock(st, b, 'bomb');
+            cnt++;
+          }
+        }
+        st.bolts.length = 0;
+        if (st.chewing && !st.chewing.alive) st.chewing = null;
+        ev(st, { t: 'bomb', x: it.x, wy: it.wy, cnt });
+      } else {
+        st[it.kind] = C.POWER_TIME[it.kind];
+        ev(st, { t: 'power', kind: it.kind, x: it.x, wy: it.wy });
+      }
+    }
+  }
+}
+
+function stepTowers(st, dt) {
+  const h = st.head;
+  for (const b of st.blocks) {
+    if (!b.alive || b.kind !== 'tower') continue;
+    const d = b.wy - h.wy;
+    if (d < 20 || d > C.TOWER.range) continue;
+    b.cd -= dt;
+    if (b.cd <= 0) {
+      b.cd = C.TOWER.cd;
+      st.bolts.push({ x: b.x, wy: b.wy - HALF });
+      if (st.lv.elite) {
+        if (b.x - C.CELL > 0) st.bolts.push({ x: b.x - C.CELL, wy: b.wy - HALF });
+        if (b.x + C.CELL < C.FIELD.w) st.bolts.push({ x: b.x + C.CELL, wy: b.wy - HALF });
+      }
+      ev(st, { t: 'fire', x: b.x, wy: b.wy - HALF });
+    }
+  }
+  if (!st.bolts.length) return;
+  const segs = segments(st, 40);
+  for (let i = st.bolts.length - 1; i >= 0; i--) {
+    const bo = st.bolts[i];
+    bo.wy -= C.TOWER.boltV * dt;
+    let hitIdx = -1;
+    for (let k = 0; k < segs.length; k++) {
+      if (Math.abs(segs[k].x - bo.x) < 12 && Math.abs(segs[k].wy - bo.wy) < 13) {
+        hitIdx = k;
+        break;
+      }
+    }
+    if (hitIdx >= 0) {
+      st.bolts.splice(i, 1);
+      if (st.shield > 0 || st.armor > 0) {
+        if (st.shield <= 0) {
+          st.armor--;
+          st.armorT = 0;
+        }
+        ev(st, { t: 'deflect', x: bo.x, wy: bo.wy, armor: st.shield <= 0 });
+        continue;
+      }
+      st.len--;
+      st.boltHits++;
+      st.combo = 0;
+      ev(st, { t: 'boltHit', x: segs[hitIdx].x, wy: segs[hitIdx].wy });
+      if (st.len <= 0) lose(st, 1);
+    } else if (bo.wy < h.wy - 420) st.bolts.splice(i, 1);
+  }
+}
+
+function hurtBlock(st, b, dmg, how) {
+  if (!b.alive || phased(st, b)) return;
+  if (b.type === 'iron' && (how === 'fire' || how === 'bow')) {
+    ev(st, { t: 'clank', x: b.x, wy: b.wy - HALF });
+    return;
+  }
+  b.rg = 0;
+  b.n -= b.kind === 'gate' ? Math.ceil(dmg / 2) : dmg;
+  if (b.n <= 0) {
+    b.n = 0;
+    breakBlock(st, b, how);
+    if (st.chewing === b) st.chewing = null;
+  }
+}
+// 前面这条道上最近的砖（城门横跨全宽）
+function blockAhead(st, x, range, skip) {
+  let best = null;
+  for (const b of st.blocks) {
+    if (!b.alive || b === skip) continue;
+    const d = b.wy - st.head.wy;
+    if (d < 0 || d > range) continue;
+    if (b.kind !== 'gate' && Math.abs(b.x - x) > HALF) continue;
+    if (!best || b.wy < best.wy) best = b;
+  }
+  return best;
+}
+function stepCars(st, dt) {
+  const f = carLv(st, 'fire');
+  if (f) {
+    st.fireCd -= dt;
+    const range = f >= 3 ? 230 : 150;
+    if (st.fireCd <= 0) {
+      const b = blockAhead(st, st.head.x, range);
+      if (b) {
+        st.fireCd = [0, 2.0, 1.6, 1.4][f];
+        const dmg = [0, 3, 5, 8][f];
+        ev(st, { t: 'fire', x: st.head.x, wy: st.head.wy, to: b.wy - HALF, lv: f });
+        hurtBlock(st, b, dmg, 'fire');
+        if (f >= 3) {
+          const b2 = blockAhead(st, st.head.x, range + C.CELL * 2, b);
+          if (b2 && b2.alive) hurtBlock(st, b2, dmg, 'fire');
+        }
+      } else st.fireCd = 0.2;
+    }
+  }
+  const bw = carLv(st, 'bow');
+  if (bw) {
+    st.bowCd -= dt;
+    if (st.bowCd <= 0) {
+      st.bowCd = [0, 1.2, 0.85, 0.85][bw];
+      const segs = segments(st, 4);
+      const p = segs[Math.min(segs.length - 1, 1 + st.carOrder.indexOf('bow'))] || st.head;
+      const dirs = bw >= 3 ? [-0.22, 0, 0.22] : [0];
+      for (const d of dirs) st.shots.push({ x: p.x, wy: p.wy + 10, vx: d * 520 });
+      ev(st, { t: 'bowShot', x: p.x, wy: p.wy });
+    }
+  }
+  for (let i = st.shots.length - 1; i >= 0; i--) {
+    const sh = st.shots[i];
+    sh.wy += 560 * dt;
+    sh.x += sh.vx * dt;
+    let hit = null;
+    for (const b of st.blocks) {
+      if (!b.alive || phased(st, b)) continue;
+      if (Math.abs(b.wy - sh.wy) < HALF && (b.kind === 'gate' || Math.abs(b.x - sh.x) < HALF)) {
+        hit = b;
+        break;
+      }
+    }
+    if (hit) {
+      st.shots.splice(i, 1);
+      ev(st, { t: 'shotHit', x: sh.x, wy: hit.wy - HALF });
+      hurtBlock(st, hit, 1, 'bow');
+    } else if (sh.wy > st.head.wy + 700 || sh.x < 0 || sh.x > C.FIELD.w) st.shots.splice(i, 1);
+  }
+  const am = armorMax(st);
+  if (am && st.armor < am) {
+    st.armorT += dt;
+    if (st.armorT >= (carLv(st, 'armor') >= 3 ? 3 : 5)) {
+      st.armorT = 0;
+      st.armor++;
+    }
+  }
+}
+
+function stepEnemies(st, dt) {
+  const h = st.head;
+  for (const b of st.blocks) {
+    if (!b.alive) continue;
+    const d = b.wy - h.wy;
+    if (b.type === 'rock' && d < 560) {
+      b.wy -= 75 * dt;
+      // 滚到龙头上：顶住，变成正在啃的那块
+      if (Math.abs(h.x - b.x) < HALF + C.HEAD_R * 0.55 && b.wy - HALF - C.HEAD_R < h.wy && b.wy > h.wy - HALF) {
+        b.wy = h.wy + HALF + C.HEAD_R;
+        if (st.chewing !== b) {
+          st.chewing = b;
+          st.chewT = 0;
+          ev(st, { t: 'bump', x: b.x, wy: b.wy, kind: 'rock' });
+        }
+      }
+      if (b.wy < h.wy - 320) b.alive = false;
+    }
+    if ((b.type === 'clay' || b.boss === 'general') && st.chewing !== b && b.n < b.n0 && d < 600) {
+      b.rg += dt;
+      if (b.rg >= (b.boss ? 0.45 : 0.7)) {
+        b.rg = 0;
+        b.n++;
+        ev(st, { t: 'regen', x: b.boss ? h.x : b.x, wy: b.wy });
+      }
+    }
+    if (b.door) {
+      const dr = b.door;
+      dr.x += dr.vx * dt;
+      if (dr.x < dr.w / 2 + 4 || dr.x > C.FIELD.w - dr.w / 2 - 4) {
+        dr.vx = -dr.vx;
+        dr.x = clamp(dr.x, dr.w / 2 + 4, C.FIELD.w - dr.w / 2 - 4);
+      }
+    }
+    if (b.boss === 'ballista' && d < 620) {
+      b.cd -= dt;
+      if (b.cd <= 0) {
+        b.cd = st.lv.elite ? 1.3 : 1.7;
+        const lanes = [0, 1, 2, 3, 4].sort(() => st.R() - 0.5).slice(0, 3);
+        for (const ln of lanes) st.bolts.push({ x: laneX(ln), wy: b.wy - HALF - 40 });
+        ev(st, { t: 'volley', wy: b.wy });
+      }
+    }
+    if (d < 470 && d > 0) {
+      const key = b.boss || b.type;
+      if (key && !st.seen[key]) {
+        st.seen[key] = 1;
+        ev(st, { t: b.boss ? 'newBoss' : 'newType', key });
+      }
+    }
+  }
+  if (!st.foes.length) return;
+  const segs = segments(st, 40);
+  for (const f of st.foes) {
+    if (!f.alive) continue;
+    const d = f.wy - h.wy;
+    if (d < -340) {
+      f.alive = false;
+      continue;
+    }
+    if (d > 700) continue;
+    if (d < 470 && !st.seen.foe) {
+      st.seen.foe = 1;
+      ev(st, { t: 'newType', key: 'foe' });
+    }
+    if (f.stun > 0) f.stun -= dt;
+    else {
+      f.x += f.vx * dt;
+      if (f.x < 18 || f.x > C.FIELD.w - 18) {
+        f.vx = -f.vx;
+        f.x = clamp(f.x, 18, C.FIELD.w - 18);
+      }
+    }
+    if (Math.hypot(f.x - h.x, f.wy - h.wy) < 22) {
+      f.alive = false;
+      st.len += 2;
+      st.parts += 2;
+      ev(st, { t: 'foeEat', x: f.x, wy: f.wy });
+      continue;
+    }
+    if (f.stun > 0) continue;
+    for (let k = 1; k < segs.length; k++) {
+      if (Math.hypot(segs[k].x - f.x, segs[k].wy - f.wy) < 15) {
+        f.stun = 1.2;
+        f.vx = -f.vx;
+        if (st.shield > 0 || st.armor > 0) {
+          if (st.shield <= 0) st.armor--;
+          ev(st, { t: 'deflect', x: f.x, wy: f.wy, armor: true });
+        } else {
+          st.len -= 3;
+          ev(st, { t: 'foeCut', x: segs[k].x, wy: segs[k].wy });
+          if (st.len <= 0) lose(st, 0);
+        }
+        break;
+      }
+    }
+  }
+}
+
+function step(st, dt) {
+  if (st.pendingCards && st.mode === 'play' && st.t > 0.8) {
+    st.pendingCards = 0;
+    openCards(st);
+  }
+  if (st.mode !== 'play') return;
+  st.t += dt;
+  if (st.shield > 0) st.shield = Math.max(0, st.shield - dt);
+  if (st.magnet > 0) st.magnet = Math.max(0, st.magnet - dt);
+  steer(st, dt);
+  stepEnemies(st, dt);
+  if (st.mode !== 'play') return;
+  advance(st, dt);
+  chew(st, dt);
+  if (st.mode !== 'play') return;
+  stepItems(st, dt);
+  if (st.mode !== 'play') return;
+  stepTowers(st, dt);
+  stepCars(st, dt);
+  // 记下龙头走过的路（车厢跟着走）
+  const last = st.trail[st.trail.length - 1];
+  if (Math.hypot(st.head.x - last.x, st.head.wy - last.wy) >= 2) st.trail.push({ x: st.head.x, wy: st.head.wy });
+  const keep = Math.min(st.len, 60) * C.SEG / 2 + 60;
+  if (st.trail.length > keep * 1.5) st.trail.splice(0, st.trail.length - keep);
+  st.maxLen = Math.max(st.maxLen, st.len);
+}
+
+// —— 机器人：看前面的一排，挑扣得最少、零件最多的道 ——
+// skill.look：看多远；skill.miss：挑错的机会；skill.react：多久重新想一次
+function botThink(st, skill, mem) {
+  mem.cd = (mem.cd || 0) - 1 / 60;
+  if (mem.cd > 0 && mem.lane !== undefined) return laneX(mem.lane);
+  mem.cd = skill.react;
+  const h = st.head;
+  const cost = [0, 0, 0, 0, 0];
+  const gain = [0, 0, 0, 0, 0];
+  // 前面最近的一排方块
+  let rowWy = null;
+  for (const b of st.blocks) {
+    if (!b.alive) continue;
+    const d = b.wy - h.wy;
+    if (d > -10 && d < skill.look && (rowWy === null || b.wy < rowWy)) rowWy = b.wy;
+  }
+  if (rowWy !== null) {
+    for (const b of st.blocks) {
+      if (!b.alive || Math.abs(b.wy - rowWy) > 4) continue;
+      if (b.kind === 'gate') {
+        if (b.door) return b.door.x;
+        for (let i = 0; i < 5; i++) cost[i] += b.n;
+      } else {
+        const extra = b.kind === 'tower' ? -2 : b.type === 'powder' ? 3 : b.type === 'ghost' ? -b.n * 0.5 : 0;
+        cost[Math.floor(b.x / C.CELL)] += b.n + extra;
+      }
+    }
+  }
+  for (const it of st.items) {
+    if (!it.alive) continue;
+    const d = it.wy - h.wy;
+    if (d > 0 && d < skill.look * 0.8 && (rowWy === null || it.wy < rowWy)) gain[clamp(Math.floor(it.x / C.CELL), 0, 4)] += it.kind === 'part' ? it.n : 3;
+  }
+  for (const bo of st.bolts) cost[clamp(Math.floor(bo.x / C.CELL), 0, 4)] += 2;
+  const cur = clamp(Math.floor(h.x / C.CELL), 0, 4);
+  const score = cost.map((c, i) => (c >= st.len ? 1000 + c : c) - gain[i] * 0.9 + Math.abs(i - cur) * 0.3);
+  const order = [0, 1, 2, 3, 4].sort((a, b) => score[a] - score[b]);
+  let pick = order[0];
+  if (st.R() < skill.miss) pick = order[1];
+  mem.lane = pick;
+  return laneX(pick);
+}
+
+const BOT_PREF = ['forge', 'fire', 'bow', 'tooth', 'powder', 'armor', 'magnet'];
+function botPick(st) {
+  if (st.mode !== 'cards') return;
+  let best = 0;
+  st.cards.forEach((id, i) => {
+    if (BOT_PREF.indexOf(id) < BOT_PREF.indexOf(st.cards[best])) best = i;
+  });
+  pick(st, best);
+}
+
+module.exports = { newRun, pick, botPick, openCards, carLv, phased, step, segments, speedNow, rowIndex, chapter, botThink, laneX, HALF };
 
 });
 __def("js/sfx.js", function (module, exports, require) {
@@ -3800,6 +6907,35 @@ function make(name, sr) {
 }
 
 module.exports = { make, NAMES: Object.keys(RECIPES) };
+
+});
+__def("js/shell.js", function (module, exports, require) {
+// 外壳：只开一次画布和手指，主页 / 机关龙 / 守城打龙 三个画面轮流接手。
+// 每个画面 register(名字, { onTouch, frame, enter })；go(名字) 切过去。
+const PF = require('./platform.js');
+
+const modes = {};
+let active = null;
+let handler = null;
+const view = PF.setup((type, id, x, y) => {
+  if (handler) handler(type, id, x, y);
+});
+
+function register(name, m) {
+  modes[name] = m;
+}
+function go(name) {
+  active = name;
+  handler = modes[name].onTouch;
+  if (modes[name].enter) modes[name].enter();
+}
+function loop() {
+  if (active && modes[active]) modes[active].frame();
+  PF.nextFrame(loop);
+}
+PF.nextFrame(loop);
+
+module.exports = { view, register, go, current: () => active };
 
 });
 __def("js/sim.js", function (module, exports, require) {

@@ -29,9 +29,12 @@ function setup(onTouch) {
   } else {
     canvas = document.getElementById('game');
     // 电脑上预览时装成一部手机大小；手机浏览器里就占满屏
-    const phone = window.innerWidth > 520;
-    width = phone ? 390 : window.innerWidth;
-    height = phone ? Math.min(844, window.innerHeight - 20) : window.innerHeight;
+    // 窗口还没显示出来时宽高是 0：先当成一部手机，免得画布变成 0×0
+    const iw = window.innerWidth || 390;
+    const ih = window.innerHeight || 844;
+    const phone = iw > 520;
+    width = phone ? 390 : iw;
+    height = phone ? Math.max(480, Math.min(844, ih - 20)) : ih;
     dpr = window.devicePixelRatio || 2;
     canvas.style.width = width + 'px';
     canvas.style.height = height + 'px';
@@ -73,7 +76,7 @@ function nextFrame(fn) {
 function vibrate(strong) {
   if (isWx && wx.vibrateShort) {
     wx.vibrateShort({ type: strong ? 'heavy' : 'light', fail() {} });
-  } else if (typeof navigator !== 'undefined' && navigator.vibrate) {
+  } else if (touched && typeof navigator !== 'undefined' && navigator.vibrate) {
     navigator.vibrate(strong ? 30 : 10);
   }
 }
@@ -113,7 +116,9 @@ function audioCtx() {
   return audio;
 }
 // 浏览器要在手指点下去的那一刻打开声音
+let touched = false; // 浏览器要手指点过才准震动
 function unlockAudio() {
+  touched = true;
   const a = audioCtx();
   if (a && a.state === 'suspended' && a.resume) a.resume();
 }

@@ -5,9 +5,15 @@ const fs = require('fs');
 const path = require('path');
 
 const root = path.join(__dirname, '..');
-const files = ['game.js'].concat(
-  fs.readdirSync(path.join(root, 'js')).filter((f) => f.endsWith('.js')).map((f) => 'js/' + f)
-);
+// js/ 下面连子文件夹（js/ram/ 机关龙玩法）一起打包
+function walk(dir) {
+  return fs.readdirSync(path.join(root, dir)).flatMap((f) => {
+    const p = dir + '/' + f;
+    if (fs.statSync(path.join(root, p)).isDirectory()) return walk(p);
+    return f.endsWith('.js') ? [p] : [];
+  });
+}
+const files = ['game.js'].concat(walk('js'));
 
 const defs = files
   .map((f) => {

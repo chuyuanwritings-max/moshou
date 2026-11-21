@@ -17,6 +17,12 @@ const fs = require('fs');
   await page.evaluate(() => localStorage.clear());
   await page.goto(url);
   await page.waitForTimeout(500);
+  // 0.5：先从主页进「守城打龙」；第一次进边城有 2 秒出场，截一张再点掉
+  await page.evaluate(() => __menu.launch('defend'));
+  await page.waitForTimeout(1300);
+  await page.screenshot({ path: path.join(__dirname, 'shots', '00_出场.png') });
+  await page.evaluate(() => { if (__moshou.G.intro) __moshou.G.intro.t = 99; });
+  await page.waitForTimeout(200);
 
   const ok = [];
   const check = (cond, msg) => { if (!cond) throw new Error('没通过：' + msg); ok.push(msg); console.log('  ✓ ' + msg); };

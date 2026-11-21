@@ -840,6 +840,192 @@ const FAM = {
   terra: { base: '#a8693f', shade: '#7d4a2b', hi: '#d39a6a' },
 };
 
+// 0.5：边城的机关长龙一节节是蒸汽车厢（和玩法 A 的龙同一套样子）
+function drawCarSeg(ctx, g, t, c) {
+  const R = g.r;
+  const a = (g.a || 0) + Math.PI / 2;
+  ctx.save();
+  ctx.translate(g.x, g.y);
+  ctx.rotate(a);
+  const s = R * 0.92;
+  ctx.fillStyle = 'rgba(20,12,6,0.32)';
+  roundRect(ctx, -s + 3, -s + 4, s * 2, s * 2, 5);
+  ctx.fill();
+  // 轮子
+  ctx.fillStyle = LINE;
+  for (const sx of [-s - 3, s]) {
+    ctx.fillRect(sx, -s * 0.6, 3, s * 0.45);
+    ctx.fillRect(sx, s * 0.2, 3, s * 0.45);
+  }
+  ctx.fillStyle = '#c9933a';
+  ctx.strokeStyle = LINE;
+  ctx.lineWidth = 1.8;
+  roundRect(ctx, -s, -s, s * 2, s * 2, 5);
+  ctx.fill();
+  ctx.fillStyle = '#946224';
+  ctx.fillRect(-s + 2, s - 6, s * 2 - 4, 4);
+  ctx.stroke();
+  ctx.fillStyle = '#6b4518';
+  for (const [px, py] of [[-0.55, -0.55], [0.55, -0.55], [-0.55, 0.45], [0.55, 0.45]]) {
+    ctx.beginPath();
+    ctx.arc(px * s, py * s, 1.8, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  if (g.id % 3 === 1) {
+    ctx.fillStyle = '#4a3220';
+    ctx.fillRect(-3.5, -3.5, 7, 7);
+    ctx.strokeRect(-3.5, -3.5, 7, 7);
+    const k = (t * 1.6 + g.id * 0.37) % 1;
+    ctx.fillStyle = 'rgba(240,236,228,' + (0.5 * (1 - k)) + ')';
+    ctx.beginPath();
+    ctx.arc(0, -4 - k * 10, 3 + k * 4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(-s * 0.62, -s * 0.7);
+  ctx.lineTo(-s * 0.62, 0);
+  ctx.stroke();
+  ctx.restore();
+}
+
+// 0.5：拆来的零件拼到城墙上——每件武器在城墙上立一座看得见的机关台；零件攒多了城墙包铜甲
+const WALL_SLOTS = [44, 110, 250, 316];
+function drawWallMachines(ctx, st, t, parts) {
+  const F = C.FIELD;
+  const wy = F.gateY - 10;
+  // 铜甲：每 6 个零件包一块，最多 12 块
+  const plates = Math.min(12, Math.floor(parts / 6));
+  for (let i = 0; i < plates; i++) {
+    const side = i % 2 ? 1 : -1;
+    const k = Math.floor(i / 2);
+    const x = side < 0 ? 4 + k * 22 : F.w - 26 - k * 22;
+    ctx.fillStyle = LINE;
+    ctx.fillRect(x - 1, wy + 9, 22, 30);
+    ctx.fillStyle = '#c9933a';
+    ctx.fillRect(x, wy + 10, 20, 28);
+    ctx.fillStyle = '#946224';
+    ctx.fillRect(x, wy + 32, 20, 6);
+    ctx.fillStyle = '#6b4518';
+    ctx.fillRect(x + 3, wy + 13, 2, 2);
+    ctx.fillRect(x + 15, wy + 13, 2, 2);
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(x + 3, wy + 17, 2, 10);
+  }
+  const ids = Object.keys(st.weapons).filter((id) => id !== 'bow');
+  ids.forEach((id, i) => {
+    if (i >= WALL_SLOTS.length) return;
+    drawMachine(ctx, id, WALL_SLOTS[i], wy - 14, st.weapons[id], t);
+  });
+}
+
+function drawMachine(ctx, id, x, y, lv, t) {
+  const k = 1.05 + lv * 0.1;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(k, k);
+  if (lv >= 5) {
+    ctx.fillStyle = 'rgba(255,214,90,' + (0.25 + 0.15 * Math.sin(t * 6)) + ')';
+    ctx.beginPath();
+    ctx.arc(0, -10, 26, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.strokeStyle = LINE;
+  ctx.lineWidth = 1.8;
+  // 底座
+  ctx.fillStyle = '#5a3d22';
+  roundRect(ctx, -14, -4, 28, 10, 3);
+  ctx.fill();
+  ctx.stroke();
+  if (id === 'blade') {
+    // 铜轮机：一只转着的齿轮刃
+    ctx.save();
+    ctx.translate(0, -14);
+    ctx.rotate(t * 6);
+    ctx.fillStyle = '#d9a441';
+    ctx.beginPath();
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2;
+      const r = i % 2 ? 11 : 7;
+      ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  } else if (id === 'pot') {
+    // 投石机：一根摆臂 + 罐
+    const sw = Math.sin(t * 3) * 0.3;
+    ctx.save();
+    ctx.translate(0, -6);
+    ctx.rotate(-0.6 + sw);
+    ctx.fillStyle = '#8a5a2b';
+    ctx.fillRect(-2, -24, 4, 26);
+    ctx.strokeRect(-2, -24, 4, 26);
+    ctx.fillStyle = '#3a2a1c';
+    ctx.beginPath();
+    ctx.arc(0, -26, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  } else if (id === 'chain') {
+    // 铜雷柱：柱子顶上一团电
+    ctx.fillStyle = '#b07a3e';
+    ctx.fillRect(-4, -28, 8, 26);
+    ctx.strokeRect(-4, -28, 8, 26);
+    ctx.strokeStyle = '#9fe8ff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let i = 0; i < 3; i++) {
+      const a = t * 9 + i * 2.1;
+      ctx.moveTo(0, -30);
+      ctx.lineTo(Math.cos(a) * 9, -30 + Math.sin(a) * 7);
+    }
+    ctx.stroke();
+  } else if (id === 'frost') {
+    // 喷汽口：一根弯管冒白汽
+    ctx.fillStyle = '#7c8791';
+    ctx.fillRect(-4, -22, 8, 20);
+    ctx.strokeRect(-4, -22, 8, 20);
+    ctx.fillRect(-4, -26, 14, 6);
+    ctx.strokeRect(-4, -26, 14, 6);
+    const p = (t * 1.5) % 1;
+    ctx.fillStyle = 'rgba(220,240,255,' + (0.7 * (1 - p)) + ')';
+    ctx.beginPath();
+    ctx.arc(12 + p * 6, -26 - p * 12, 4 + p * 5, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (id === 'hammer') {
+    // 大锤架
+    const lift = Math.abs(Math.sin(t * 2.5)) * 6;
+    ctx.fillStyle = '#6b4424';
+    ctx.fillRect(-10, -26, 3, 24);
+    ctx.fillRect(7, -26, 3, 24);
+    ctx.fillRect(-10, -28, 20, 3);
+    ctx.fillStyle = '#7c8791';
+    roundRect(ctx, -7, -20 - lift, 14, 10, 2);
+    ctx.fill();
+    ctx.stroke();
+  } else if (id === 'lamp') {
+    // 灯塔：顶上一盏照妖灯
+    ctx.fillStyle = '#8a5a2b';
+    ctx.fillRect(-4, -24, 8, 22);
+    ctx.strokeRect(-4, -24, 8, 22);
+    ctx.fillStyle = '#ffe08a';
+    ctx.beginPath();
+    ctx.arc(0, -28, 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255,240,170,0.25)';
+    ctx.beginPath();
+    ctx.moveTo(-5, -30);
+    ctx.lineTo(-18, -70);
+    ctx.lineTo(18, -70);
+    ctx.lineTo(5, -30);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
 function drawSegBody(ctx, g, t, fam) {
   const R = g.r;
   const c = FAM[fam];
@@ -866,6 +1052,7 @@ function drawSegBody(ctx, g, t, fam) {
       }
     }
   }
+  if (fam === 'dragon') return drawCarSeg(ctx, g, t, c);
   disc(ctx, g.x, g.y, R, c.base, c.shade);
   if (fam === 'dragon') {
     // 齿轮边 + 四颗铆钉
@@ -1808,4 +1995,4 @@ function drawScene(ctx, st) {
   ctx.fillRect(0, wy + 112, F.w, 1.5);
 }
 
-module.exports = { IMG, LINE, disc, drawScene, drawDragonAll, drawHero, drawWeapons, drawWeaponIcon, drawTypeIcon, P, pix, drawPlayer, drawCrossbow, drawBuddy, drawPal, drawShells, boltTier, drawIcon, drawBackground, drawDragon, drawBullets, star, fmtHp, bigText, clamp };
+module.exports = { drawWallMachines, WALL_SLOTS, drawSegBody, drawHeadAll, IMG, LINE, disc, drawScene, drawDragonAll, drawHero, drawWeapons, drawWeaponIcon, drawTypeIcon, P, pix, drawPlayer, drawCrossbow, drawBuddy, drawPal, drawShells, boltTier, drawIcon, drawBackground, drawDragon, drawBullets, star, fmtHp, bigText, clamp };
