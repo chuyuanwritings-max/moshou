@@ -157,7 +157,7 @@ function handleEvents(st) {
       dropCar(st);
       snd('hit', 35, 0.35, 0.9 + Math.min(e.combo, 30) * 0.035);
       G.shake = Math.max(G.shake, e.kind === 'gate' ? 3 : 1.6);
-      PF.vibrate(false);
+      if (e.combo % 4 === 1) PF.vibrate(false);
     } else if (e.t === 'bump') {
       snd('thud', 80, 0.5);
       G.shake = Math.max(G.shake, 3);
