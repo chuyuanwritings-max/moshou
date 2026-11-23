@@ -17,8 +17,10 @@ function newRun(meta, lv, builderId, seed) {
     hpMax: 0, hp: 0, dunUsed: false, stats: null, dirty: true,
     log: { kills: 0, made: 0, bought: 0 },
   };
-  // 进攻时车头自带一张连弩（守城时阿铸自己射箭）
-  if (lv.mode === 'attack') r.slots[0] = { id: 'nu', tier: 1 };
+  // 开局送一件连弩：进攻装在车头，守城摆在第 1 座箭楼
+  r.slots[0] = { id: 'nu', tier: 1 };
+  // 开局先给两份金，第一件机关马上就能合
+  if (lv.mode === 'defend') r.mats.jin += 2;
   if (b.gift) r.bench.push({ id: b.gift, tier: 1 });
   if (meta.shenji && meta.shenji.modou) {
     const pool = D.MACHINES.filter((m) => r.recipes.indexOf(m.id) >= 0);
@@ -102,7 +104,7 @@ function gainKill(r, special) {
   r.log.kills++;
   r.coins += 1 + Math.floor(r.R() * 3);
   r.xp++;
-  if (special || r.R() < (r.mode === 'attack' ? 0.4 : 0.2)) {
+  if (special || r.R() < (r.mode === 'attack' ? 0.4 : 0.45)) {
     const el = r.lv.challenge === 'onlyFire' && r.R() < 0.6 ? 'huo' : D.ELS[Math.floor(r.R() * 5)];
     r.mats[el]++;
     return el;

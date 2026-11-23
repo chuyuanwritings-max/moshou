@@ -106,7 +106,7 @@ function onTouch(type, id, px, py) {
         return;
       }
     }
-    if (G.scr === 'play') G.drag = { id, fx0: fx, x0: G.st.targetX };
+    if (G.scr === 'play') G.sel = -1;
   } else if (type === 'move') {
     if (G.drag && G.drag.id === id && G.scr === 'play') G.st.targetX = clamp(G.drag.x0 + (fx - G.drag.fx0) * 1.15, 14, FW - 14);
   } else if (type === 'up') {
@@ -147,14 +147,27 @@ function press(id) {
     const mc = B.combine(r, G.benchSel);
     if (mc) {
       G.benchSel = [];
-      G.sel = -1;
       snd('upgrade', 0, 0.6);
-      const where = autoPlace(r);
-      pop(D.M[mc.id].name + (mc.tier > 1 ? ' · 鲁班尺高一阶！' : '') + (where ? ' → ' + where : ''), FW / 2, 268, '#ffd65a', 16);
+      G.sel = r.bench.length - 1;
+      if (r.lv.mode === 'defend') pop(D.M[mc.id].name + '：点亮着的点位放下', FW / 2, 600, '#ffd65a', 15);
+      else pop(D.M[mc.id].name + '：点上面车上的格子装上去', FW / 2, 268, '#ffd65a', 15);
     }
   } else if (id.startsWith('tray')) {
     const i = +id.slice(4);
     G.sel = G.sel === i ? -1 : i;
+  } else if (id.startsWith('spot')) {
+    const si = +id.slice(4);
+    if (G.sel >= 0) {
+      const res = B.place(r, G.sel, si);
+      if (res && res.blocked) pop('一夫当关：只能放 1 件', FW / 2, 560, '#ff8a5a', 15);
+      else if (res) {
+        snd(res.res === 'merge' ? 'evolve' : 'clang', 0, 0.5);
+        const p = F.slotPos(si);
+        pop(res.res === 'merge' ? '叠成 ' + res.slot.tier + ' 阶！' : '放下 ' + D.M[res.slot.id].name, p.x, p.y - 26, '#ffd65a', 15);
+        G.spotView = { i: si, t: 1.6 };
+      }
+      G.sel = -1;
+    } else if (r.slots[si]) G.spotView = { i: si, t: 1.6 };
   } else if (id.startsWith('slot')) {
     const si = +id.slice(4);
     if (G.sel >= 0) {
@@ -178,7 +191,6 @@ function press(id) {
   } else if (id === 'refresh') {
     if (!B.refresh(r)) snd('alarm', 200, 0.3);
   } else if (id === 'nextWave') {
-    autoPlace(r);
     G.scr = 'play';
     G.benchSel = [];
     G.sel = -1;
@@ -259,8 +271,11 @@ function killFx(x, y, col) {
 }
 // 材料飞进右上角口袋（0.1 秒闪一圈）
 function orb(x, y, el) {
-  const tx = 214 + D.ELS.indexOf(el) * 28;
-  G.fx.push({ k: 'orb', x, y, x0: x, y0: y, tx, ty: 32, t: 0, life: 0.55, col: D.EL[el].col });
+  const i = D.ELS.indexOf(el);
+  const live = G.r && G.r.lv.mode === 'defend';
+  const tx = live ? 28 + i * 40 : 214 + i * 28;
+  const ty = live ? 663 : 32;
+  G.fx.push({ k: 'orb', x, y, x0: x, y0: y, tx, ty, t: 0, life: 0.55, col: D.EL[el].col });
 }
 
 const sy = (wy) => A.HEAD_Y - (wy - G.st.head.wy);
@@ -424,19 +439,33 @@ function frame() {
     let n = 0;
     while (acc >= 1 / 60 && n++ < 40 && G.scr === 'play') {
       acc -= 1 / 60;
-      if (G.bot || (G.r.lv.mode === 'defend' && !G.drag)) G.st.targetX = S().botX(G.st);
+      if (G.r.lv.mode === 'attack') G.st.targetX = S().botX(G.st);
+      if (G.bot && G.r.lv.mode === 'defend' && Math.random() < 0.02) botCombine();
       S().step(G.st, 1 / 60);
       handleEvents();
     }
   }
   if (G.bot && G.scr === 'shop') botShop();
   if (G.banner > 0) G.banner -= dt;
+  if (G.spotView) {
+    G.spotView.t -= dt;
+    if (G.spotView.t <= 0) G.spotView = null;
+  }
   if (G.teach) {
     G.teach.t += dt;
     if (G.teach.t > 5) G.teach = null;
   }
   stepFx(dt);
   render();
+}
+function botCombine() {
+  const r = G.r;
+  for (let k = 0; k < 10; k++) {
+    const m = D.MACHINES.find((mm) => r.recipes.indexOf(mm.id) >= 0 && mm.els.every((e) => r.mats[e] >= mm.els.filter((x) => x === e).length));
+    if (!m) break;
+    B.combine(r, m.els);
+  }
+  autoPlace(r);
 }
 function botShop() {
   const r = G.r;
@@ -500,6 +529,7 @@ function render() {
     drawFx();
     ctx.restore();
     drawHud();
+    if (G.scr === 'play' && G.r.lv.mode === 'defend') drawLiveBench();
     if (G.scr === 'shop') drawShop();
     if (G.scr === 'result') drawResult();
   }
@@ -661,30 +691,72 @@ function drawDefend() {
       bigText(ctx, String(Math.ceil(g.hp)), p.x, p.y + 1, g.hp >= 100 ? 9 : 11, '#fff8e6', LINE);
     }
   }
-  // 城墙 + 点位
+  // 城墙 + 城门（龙撞进门扣血）
   const wy = F.WALL_Y;
   ctx.fillStyle = '#6f5d4a';
   ctx.fillRect(0, wy - 6, FW, 50);
   ctx.strokeStyle = LINE;
   ctx.lineWidth = 2;
   ctx.strokeRect(-2, wy - 6, FW + 4, 50);
+  for (let x = 4; x < FW; x += 30) {
+    if (Math.abs(x + 9 - FW / 2) < 34) continue;
+    ctx.fillStyle = '#7d6a55';
+    ctx.fillRect(x, wy - 18, 18, 12);
+    ctx.strokeRect(x, wy - 18, 18, 12);
+  }
   ctx.fillStyle = '#3a2a1c';
   roundRect(ctx, FW / 2 - 24, wy - 4, 48, 46, 18);
   ctx.fill();
+  if (IMG.hero.ok) ctx.drawImage(IMG.hero, FW / 2 + 26, wy - 52, 26, 60);
+  // 点位：城外高低不同的箭楼、土台
   const r = G.r;
-  const total = D.META.slots.max;
-  for (let i = 0; i < total; i++) {
-    const p = F.slotPos(i);
+  const hand = G.sel >= 0 ? D.M[r.bench[G.sel].id] : null;
+  F.SPOTS.forEach((p, i) => {
     const open = i < r.slots.length;
-    ctx.fillStyle = open ? '#4a3a2a' : 'rgba(40,30,20,0.6)';
+    const mc = r.slots[i];
+    // 射程圈：选中手上的机关时，空点位都画一圈；点了某个点位就画它的圈
+    const showR = hand && open && (!mc || (mc.id === r.bench[G.sel].id && mc.tier === r.bench[G.sel].tier)) ? F.rangeOf(r, hand) : G.spotView && G.spotView.i === i && mc ? F.rangeOf(r, D.M[mc.id]) : 0;
+    if (showR) {
+      ctx.fillStyle = 'rgba(255,214,90,0.10)';
+      ctx.strokeStyle = 'rgba(255,214,90,0.7)';
+      ctx.setLineDash([6, 6]);
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, showR, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    // 台子
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.beginPath();
+    ctx.ellipse(p.x + 3, p.y + 14, 22, 9, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = open ? '#8d7962' : 'rgba(70,58,46,0.7)';
     ctx.strokeStyle = LINE;
-    ctx.lineWidth = 1.5;
-    roundRect(ctx, p.x - 17, p.y - 17, 34, 34, 8);
+    ctx.lineWidth = 2;
+    roundRect(ctx, p.x - 20, p.y - 8, 40, 22, 6);
     ctx.fill();
     ctx.stroke();
-    if (!open) bigText(ctx, '锁', p.x, p.y, 11, '#8a7a66', LINE);
-    else if (r.slots[i]) machineIcon(r.slots[i].id, r.slots[i].tier, p.x, p.y, 14);
-  }
+    ctx.fillStyle = open ? '#a8937a' : 'rgba(90,76,60,0.7)';
+    roundRect(ctx, p.x - 17, p.y - 14, 34, 12, 4);
+    ctx.fill();
+    ctx.stroke();
+    if (!open) {
+      bigText(ctx, '锁', p.x, p.y + 2, 11, '#a89880', LINE);
+      return;
+    }
+    G.btns.push({ id: 'spot' + i, x: p.x - 24, y: p.y - 30, w: 48, h: 48 });
+    if (mc) machineIcon(mc.id, mc.tier, p.x, p.y - 14, 14, G.spotView && G.spotView.i === i);
+    else if (hand) {
+      ctx.strokeStyle = 'rgba(255,214,90,' + (0.6 + 0.4 * Math.sin(G.t * 10)) + ')';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y - 8, 16, 0, Math.PI * 2);
+      ctx.stroke();
+      bigText(ctx, '放', p.x, p.y - 8, 12, '#ffd65a', LINE);
+    }
+  });
   // 子弹
   ctx.strokeStyle = '#fff3c4';
   ctx.lineWidth = 2.5;
@@ -721,12 +793,6 @@ function drawDefend() {
       ctx.stroke();
       ctx.restore();
     }
-  }
-  // 阿铸
-  if (IMG.hero.ok) ctx.drawImage(IMG.hero, st.px - 22, F.PLAYER_Y - 74, 44, 100);
-  else {
-    ctx.fillStyle = '#c8402c';
-    ctx.fillRect(st.px - 10, F.PLAYER_Y - 30, 20, 40);
   }
 }
 
@@ -913,14 +979,68 @@ function drawHud() {
     ctx.fillStyle = 'rgba(20,14,10,0.8)';
     ctx.fillRect(0, 250, FW, 80);
     bigText(ctx, r.wave === 0 ? r.lv.story : '第 ' + (r.wave + 1) + ' 波', FW / 2, 280, r.wave === 0 ? 16 : 24, '#ffd65a', LINE);
-    bigText(ctx, r.lv.mode === 'defend' ? '守住城门！' : '冲到城门！', FW / 2, 308, 14, '#fff8e6', LINE);
+    bigText(ctx, r.lv.mode === 'defend' ? '合机关、摆点位，守住城门！' : '车自己开，你在驿站合机关、装上车', FW / 2, 308, 14, '#fff8e6', LINE);
     ctx.restore();
   }
   if (G.teach && G.scr === 'play' && G.banner <= 0) {
     ctx.fillStyle = 'rgba(26,18,12,0.88)';
-    roundRect(ctx, 16, 470, FW - 32, 40, 10);
+    roundRect(ctx, 16, 430, FW - 32, 40, 10);
     ctx.fill();
-    bigText(ctx, G.teach.text, FW / 2, 490, 12, '#ffe9b0', LINE);
+    bigText(ctx, G.teach.text, FW / 2, 450, 12, '#ffe9b0', LINE);
+  }
+}
+
+// —— 守城：打的时候常驻在下面的机关台（照《赵云与阿斗》边打边合）——
+function canMake(r) {
+  return D.MACHINES.some((m) => r.recipes.indexOf(m.id) >= 0 && m.els.every((e) => r.mats[e] >= m.els.filter((x) => x === e).length));
+}
+function drawLiveBench() {
+  const r = G.r;
+  const y0 = 642;
+  ctx.fillStyle = 'rgba(16,10,6,0.86)';
+  roundRect(ctx, 4, y0, FW - 8, 76, 12);
+  ctx.fill();
+  if (canMake(r)) {
+    ctx.strokeStyle = 'rgba(255,214,90,' + (0.5 + 0.4 * Math.sin(G.t * 8)) + ')';
+    ctx.lineWidth = 3;
+    roundRect(ctx, 4, y0, FW - 8, 76, 12);
+    ctx.stroke();
+  }
+  // 五种材料（点了放进格子）
+  D.ELS.forEach((e, i) => {
+    const x = 10 + i * 40;
+    const left = r.mats[e] - G.benchSel.filter((q) => q === e).length;
+    btn('mat_' + e, x, y0 + 6, 36, 30, D.EL[e].name + left, left > 0 ? D.EL[e].dark : '#3a3028', '', { size: 12, dis: left <= 0 });
+  });
+  // 格子 + 合
+  for (let i = 0; i < r.bench2; i++) {
+    const x = 214 + i * 34;
+    const e = G.benchSel[i];
+    G.btns.push({ id: 'bs' + i, x, y0: 0, y: y0 + 6, w: 30, h: 30 });
+    ctx.fillStyle = e ? D.EL[e].col : '#2a2018';
+    ctx.strokeStyle = LINE;
+    ctx.lineWidth = 1.5;
+    roundRect(ctx, x, y0 + 6, 30, 30, 7);
+    ctx.fill();
+    ctx.stroke();
+    if (e) bigText(ctx, D.EL[e].name, x + 15, y0 + 21, 14, LINE, '#fff8e6');
+  }
+  const pv = B.preview(r, G.benchSel);
+  const lbl = pv.state === 'ok' ? '合 ' + pv.m.name : pv.state === 'locked' ? '没配方' : pv.state === 'none' ? '合不出' : '放 2 个';
+  btn('combine', 214 + r.bench2 * 34, y0 + 6, FW - 222 - r.bench2 * 34, 30, lbl, pv.state === 'ok' ? '#3f8a3a' : '#4a3e34', '', { size: 12, dis: pv.state !== 'ok' });
+  // 第二行：手上的机关（点一下选中，再点地图上亮着的点位）
+  if (r.bench.length) {
+    bigText(ctx, '手上：', 12, y0 + 56, 11, '#cbb8a8', LINE, 'left');
+    r.bench.forEach((m, i) => {
+      const x = 64 + i * 34;
+      if (x > FW - 20) return;
+      G.btns.push({ id: 'tray' + i, x: x - 15, y: y0 + 41, w: 30, h: 30 });
+      machineIcon(m.id, m.tier, x, y0 + 55, 11, G.sel === i);
+    });
+    if (G.sel >= 0) bigText(ctx, '点亮着的点位放下', FW - 12, y0 + 56, 11, '#ffd65a', LINE, 'right');
+  } else {
+    const tip = pv.state === 'ok' ? pv.m.tip.split(' / ')[0] : canMake(r) ? '有能合的！点两个材料' : '打碎龙节会掉材料，飞进上面';
+    bigText(ctx, tip, FW / 2, y0 + 56, 11, pv.state === 'ok' ? '#ffd65a' : '#cbb8a8', LINE);
   }
 }
 
@@ -933,7 +1053,7 @@ function drawShop() {
   const res = G.waveRes || { coins: 0 };
   bigText(ctx, '第 ' + r.wave + ' 波守住了' + (res.coins ? '  收获 +' + res.coins : ''), FW / 2, 72, 16, '#ffd65a', LINE);
   // 点位
-  bigText(ctx, r.lv.mode === 'defend' ? '城墙点位（合好的机关会自动摆上来）' : '车上的格子（合好的机关会自动装上来）', FW / 2, 96, 11, '#cbb8a8', LINE);
+  bigText(ctx, r.lv.mode === 'defend' ? '守城点位（想换位置：点下面的机关，再点这里）' : '车上的格子（点下面的机关，再点这里装上去）', FW / 2, 96, 11, '#cbb8a8', LINE);
   const n = r.slots.length;
   const sw = Math.min(40, (FW - 30) / n - 4);
   r.slots.forEach((s, i) => {
@@ -956,7 +1076,10 @@ function drawShop() {
     ctx.fill();
     bigText(ctx, D.EL[e].name + ' ' + bc[e] + '/6', x, 161, 11, bc[e] >= 2 ? LINE : '#a89880', bc[e] >= 2 ? '#fff8e6' : LINE);
   });
-  // 机关台
+  if (r.lv.mode === 'defend') {
+    bigText(ctx, '守城时合成在打的时候做；这里升级、买东西', FW / 2, 196, 12, '#cbb8a8', LINE);
+  } else {
+  // 机关台（进攻：在驿站合）
   bigText(ctx, '机关台：点材料放进来', FW / 2, 186, 12, '#fff8e6', LINE);
   D.ELS.forEach((e, i) => {
     const x = 22 + i * 64;
@@ -978,8 +1101,9 @@ function drawShop() {
   const pv = B.preview(r, G.benchSel);
   const lbl = pv.state === 'ok' ? '合成 ' + pv.m.name : pv.state === 'locked' ? '配方没开：' + pv.m.name : pv.state === 'none' ? '合不出' : '放 2 个';
   btn('combine', 70 + r.bench2 * 58, 244, FW - 86 - r.bench2 * 58, 48, lbl, pv.state === 'ok' ? '#3f8a3a' : '#4a3e34', pv.state === 'ok' ? pv.m.tip.split(' / ')[r.lv.mode === 'defend' ? 0 : 1] : '', { size: 14, dis: pv.state !== 'ok' });
+  }
   // 做好的机关
-  bigText(ctx, r.bench.length ? '放不下的机关（点一下选中，再点上面的格子换上去）' : '想换位置：点这里的机关，再点上面的格子', FW / 2, 306, 11, '#cbb8a8', LINE);
+  bigText(ctx, r.bench.length ? '手上的机关（点一下选中，再点上面的格子装上去）' : '合好的机关会放在这里', FW / 2, 306, 11, '#cbb8a8', LINE);
   r.bench.forEach((m, i) => {
     const x = 24 + i * 46;
     if (x > FW - 70) return;
@@ -1131,7 +1255,7 @@ function drawBrief() {
   ctx.stroke();
   bigText(ctx, lv.id + (lv.boss ? ' · Boss' : '') + (lv.challenge ? ' · 挑战' : ''), FW / 2, 98, 20, '#ffd65a', LINE);
   wrap(lv.story, 30, 128, FW - 60, 14);
-  const mode = lv.mode === 'defend' ? '守城：阿铸自动射箭，你只管波间合机关，机关会摆上城墙' : (lv.car === 'dragon' ? '进攻：开机关龙（' + metaNow().dragonLen + ' 格）' : '进攻：开小工程车（' + metaNow().cartSlots + ' 格）') + '，左右拖着躲砖、冲到城门';
+  const mode = lv.mode === 'defend' ? '守城：边打边合机关，自己挑路边的点位放，射程圈里的才打得到' : (lv.car === 'dragon' ? '进攻：机关龙（' + metaNow().dragonLen + ' 格）' : '进攻：小工程车（' + metaNow().cartSlots + ' 格）') + '自己开，你在驿站合机关、装上车';
   wrap(mode, 30, 170, FW - 60, 12);
   const n = D.BUILDERS.filter((b) => !b.locked).length;
   bigText(ctx, '机关师 · 已解锁 ' + n + ' / ' + D.BUILDERS.length, FW / 2, 214, 14, '#fff8e6', LINE);

@@ -5300,8 +5300,10 @@ function newRun(meta, lv, builderId, seed) {
     hpMax: 0, hp: 0, dunUsed: false, stats: null, dirty: true,
     log: { kills: 0, made: 0, bought: 0 },
   };
-  // 进攻时车头自带一张连弩（守城时阿铸自己射箭）
-  if (lv.mode === 'attack') r.slots[0] = { id: 'nu', tier: 1 };
+  // 开局送一件连弩：进攻装在车头，守城摆在第 1 座箭楼
+  r.slots[0] = { id: 'nu', tier: 1 };
+  // 开局先给两份金，第一件机关马上就能合
+  if (lv.mode === 'defend') r.mats.jin += 2;
   if (b.gift) r.bench.push({ id: b.gift, tier: 1 });
   if (meta.shenji && meta.shenji.modou) {
     const pool = D.MACHINES.filter((m) => r.recipes.indexOf(m.id) >= 0);
@@ -5385,7 +5387,7 @@ function gainKill(r, special) {
   r.log.kills++;
   r.coins += 1 + Math.floor(r.R() * 3);
   r.xp++;
-  if (special || r.R() < (r.mode === 'attack' ? 0.4 : 0.2)) {
+  if (special || r.R() < (r.mode === 'attack' ? 0.4 : 0.45)) {
     const el = r.lv.challenge === 'onlyFire' && r.R() < 0.6 ? 'huo' : D.ELS[Math.floor(r.R() * 5)];
     r.mats[el]++;
     return el;
@@ -5609,21 +5611,21 @@ const STAT_CARD = {
 const TIER_DMG = [1, 1.8, 3.2, 5.5];
 const TIER_CD = [1, 0.9, 0.8, 0.7];
 const MACHINES = [
-  { id: 'nu', els: ['jin', 'jin'], name: '连弩', kind: 'bolt', atk: 'shoot', dmg: 8, cd: 0.6, tip: '射最近的一节 / 往前射砖', t4: '三排齐射' },
-  { id: 'teng', els: ['mu', 'mu'], name: '藤网', kind: 'net', atk: 'netGuard', dmg: 0, cd: 4, tip: '网住一段路，龙变慢 / 网住飞来的箭', t4: '网里每秒掉血' },
-  { id: 'han', els: ['shui', 'shui'], name: '寒气筒', kind: 'frost', atk: 'freezeTower', dmg: 3, cd: 3, tip: '冻住前面几节 / 冻住弩塔', t4: '冻住的节挨打 +50%' },
-  { id: 'pi', els: ['huo', 'huo'], name: '霹雳罐', kind: 'lob', atk: 'lobAhead', dmg: 20, cd: 2.5, r: 40, tip: '抛到最密处炸开 / 往前炸一片砖', t4: '落地留一摊火' },
-  { id: 'chui', els: ['tu', 'tu'], name: '千斤锤', kind: 'hammer', atk: 'chew', dmg: 35, cd: 2.2, tip: '砸最前面一节 / 啃砖快 30%', t4: '砸出震波打一排' },
-  { id: 'huolong', els: ['mu', 'huo'], name: '火龙车', kind: 'fireWall', atk: 'fireRow', dmg: 6, cd: 3, tip: '一道火墙横着烧 / 车前喷火墙', t4: '火墙变两道', sheng: true },
-  { id: 'rongyan', els: ['huo', 'tu'], name: '熔岩炮', kind: 'lob', atk: 'lobAhead', dmg: 15, cd: 2.5, r: 34, pool: 5, tip: '炸开留一摊岩浆 / 撞过的地方留岩浆', t4: '岩浆不熄', sheng: true },
-  { id: 'tiejia', els: ['tu', 'jin'], name: '铁甲锤', kind: 'hammer', atk: 'chew', dmg: 25, cd: 2, rage: true, tip: '城墙越破砸得越狠 / 车越破越狠', t4: '被打就还手一锤', sheng: true },
-  { id: 'leilian', els: ['jin', 'shui'], name: '雷链', kind: 'chain', atk: 'chainRow', dmg: 12, cd: 1.8, jumps: 4, tip: '沿龙身往后劈 4 节 / 劈一排砖', t4: '跳 10 节', sheng: true },
-  { id: 'huichun', els: ['shui', 'mu'], name: '回春藤', kind: 'heal', atk: 'heal', dmg: 2, cd: 1, tip: '不打，每秒补城墙 / 补车', t4: '满血时补成护盾', sheng: true },
-  { id: 'huixuan', els: ['jin', 'mu'], name: '回旋刃', kind: 'blade', atk: 'shoot2', dmg: 18, cd: 1.5, tip: '飞出去飞回来，一路穿透，不怕盾 / 打两排', t4: '三把一起', cost: '回来时割掉藤网' },
-  { id: 'muren', els: ['mu', 'tu'], name: '机关木人', kind: 'golem', atk: 'golem', dmg: 0, cd: 6, tip: '木人拦住龙头几秒 / 替车挨打', t4: '一次两个', cost: '木人碎了不掉材料' },
-  { id: 'nizhao', els: ['tu', 'shui'], name: '泥沼机', kind: 'mud', atk: 'mud', dmg: 0, cd: 5, tip: '一片泥潭，陷住 2 秒 / 弩塔陷住射不了', t4: '两片泥潭', cost: '自己的车开过也变慢' },
-  { id: 'zhengqi', els: ['shui', 'huo'], name: '蒸汽炮', kind: 'lob', atk: 'lobAhead', dmg: 60, cd: 3, r: 50, selfHurt: 1, tip: '一炮炸开一大团 / 轰开一排砖', t4: '蒸汽留在原地', cost: '每发烫掉自己 1 血' },
-  { id: 'huochong', els: ['huo', 'jin'], name: '火铳', kind: 'bolt', atk: 'shoot', dmg: 45, cd: 1.2, critBonus: 20, overheat: 5, tip: '一枪很疼，常暴击 / 一枪打穿一块砖', t4: '不会过热', cost: '连打 5 枪过热停 2 秒' },
+  { id: 'nu', rng: 130, els: ['jin', 'jin'], name: '连弩', kind: 'bolt', atk: 'shoot', dmg: 8, cd: 0.6, tip: '射最近的一节 / 往前射砖', t4: '三排齐射' },
+  { id: 'teng', rng: 120, els: ['mu', 'mu'], name: '藤网', kind: 'net', atk: 'netGuard', dmg: 0, cd: 4, tip: '网住一段路，龙变慢 / 网住飞来的箭', t4: '网里每秒掉血' },
+  { id: 'han', rng: 110, els: ['shui', 'shui'], name: '寒气筒', kind: 'frost', atk: 'freezeTower', dmg: 3, cd: 3, tip: '冻住前面几节 / 冻住弩塔', t4: '冻住的节挨打 +50%' },
+  { id: 'pi', rng: 140, els: ['huo', 'huo'], name: '霹雳罐', kind: 'lob', atk: 'lobAhead', dmg: 20, cd: 2.5, r: 40, tip: '抛到最密处炸开 / 往前炸一片砖', t4: '落地留一摊火' },
+  { id: 'chui', rng: 80, els: ['tu', 'tu'], name: '千斤锤', kind: 'hammer', atk: 'chew', dmg: 35, cd: 2.2, tip: '砸最前面一节 / 啃砖快 30%', t4: '砸出震波打一排' },
+  { id: 'huolong', rng: 120, els: ['mu', 'huo'], name: '火龙车', kind: 'fireWall', atk: 'fireRow', dmg: 6, cd: 3, tip: '一道火墙横着烧 / 车前喷火墙', t4: '火墙变两道', sheng: true },
+  { id: 'rongyan', rng: 140, els: ['huo', 'tu'], name: '熔岩炮', kind: 'lob', atk: 'lobAhead', dmg: 15, cd: 2.5, r: 34, pool: 5, tip: '炸开留一摊岩浆 / 撞过的地方留岩浆', t4: '岩浆不熄', sheng: true },
+  { id: 'tiejia', rng: 80, els: ['tu', 'jin'], name: '铁甲锤', kind: 'hammer', atk: 'chew', dmg: 25, cd: 2, rage: true, tip: '城墙越破砸得越狠 / 车越破越狠', t4: '被打就还手一锤', sheng: true },
+  { id: 'leilian', rng: 130, els: ['jin', 'shui'], name: '雷链', kind: 'chain', atk: 'chainRow', dmg: 12, cd: 1.8, jumps: 4, tip: '沿龙身往后劈 4 节 / 劈一排砖', t4: '跳 10 节', sheng: true },
+  { id: 'huichun', rng: 0, els: ['shui', 'mu'], name: '回春藤', kind: 'heal', atk: 'heal', dmg: 2, cd: 1, tip: '不打，每秒补城墙 / 补车', t4: '满血时补成护盾', sheng: true },
+  { id: 'huixuan', rng: 140, els: ['jin', 'mu'], name: '回旋刃', kind: 'blade', atk: 'shoot2', dmg: 18, cd: 1.5, tip: '飞出去飞回来，一路穿透，不怕盾 / 打两排', t4: '三把一起', cost: '回来时割掉藤网' },
+  { id: 'muren', rng: 120, els: ['mu', 'tu'], name: '机关木人', kind: 'golem', atk: 'golem', dmg: 0, cd: 6, tip: '木人拦住龙头几秒 / 替车挨打', t4: '一次两个', cost: '木人碎了不掉材料' },
+  { id: 'nizhao', rng: 120, els: ['tu', 'shui'], name: '泥沼机', kind: 'mud', atk: 'mud', dmg: 0, cd: 5, tip: '一片泥潭，陷住 2 秒 / 弩塔陷住射不了', t4: '两片泥潭', cost: '自己的车开过也变慢' },
+  { id: 'zhengqi', rng: 120, els: ['shui', 'huo'], name: '蒸汽炮', kind: 'lob', atk: 'lobAhead', dmg: 60, cd: 3, r: 50, selfHurt: 1, tip: '一炮炸开一大团 / 轰开一排砖', t4: '蒸汽留在原地', cost: '每发烫掉自己 1 血' },
+  { id: 'huochong', rng: 170, els: ['huo', 'jin'], name: '火铳', kind: 'bolt', atk: 'shoot', dmg: 45, cd: 1.2, critBonus: 20, overheat: 5, tip: '一枪很疼，常暴击 / 一枪打穿一块砖', t4: '不会过热', cost: '连打 5 枪过热停 2 秒' },
 ];
 const M = {};
 MACHINES.forEach((m) => (M[m.id] = m));
@@ -5701,9 +5703,9 @@ const BUILDERS = [
 // —— 边城 8 关 + 2 挑战 ——
 // mode：defend / attack；car：small / dragon；waves：几波；boss：铁头龙 / 巨弩城楼
 const LEVELS = [
-  { id: '1-1', story: '公输家的机关长龙来攻边城', mode: 'defend', waves: 3, hp: 1, len: 14, teach: '阿铸自动射箭；波末点材料合机关，合好自动摆上城墙' },
+  { id: '1-1', story: '公输家的机关长龙来攻边城', mode: 'defend', waves: 3, hp: 1, len: 14, teach: '龙掉的材料飞进下面；点两个合机关，再点路边亮着的点位放下' },
   { id: '1-2', story: '长龙退了，城外留下一串车辙', mode: 'defend', waves: 3, hp: 1.2, len: 16, teach: '两件一样的机关叠在一起，升一阶' },
-  { id: '1-3', story: '顺着车辙找到公输家的前哨', mode: 'attack', car: 'small', waves: 3, num: 5, teach: '开小工程车往上冲，车上的机关自动打砖' },
+  { id: '1-3', story: '顺着车辙找到公输家的前哨', mode: 'attack', car: 'small', waves: 3, num: 5, teach: '车自己往上冲；到驿站合机关，点车上的格子装上去' },
   { id: '1-4', story: '公输家推来铁头龙撞城门', mode: 'defend', waves: 3, hp: 1.5, len: 18, boss: 'tietou', types: { shield: 0.12, powder: 0.08 } },
   { id: '1-5', story: '修城墙时，第二批长龙杀到', mode: 'defend', waves: 3, hp: 1.8, len: 20, types: { shield: 0.15, powder: 0.1 } },
   { id: '1-6', story: '斥候发现城外十里的工坊', mode: 'attack', car: 'small', waves: 3, num: 6, types: { powder: 0.1, iron: 0.12 } },
@@ -5716,7 +5718,7 @@ const WAVE_SEC = [20, 25, 30, 35, 40];
 
 // —— 局外 ——
 const META = {
-  slots: { name: '城墙点位', base: 2, max: 8, cost: [100, 250, 500, 900, 1500, 2500] },
+  slots: { name: '守城点位', base: 3, max: 8, cost: [150, 400, 800, 1400, 2200] },
   bench: { name: '机关台格数', base: 2, max: 3, cost: [800] }, // 第一版只到 3 格（还没有三合机关）
   wallHp: { name: '城墙血', base: 100, step: 10, max: 10, cost: (lv) => 60 + lv * 60 },
   cartSlots: { name: '小工程车格子', base: 2, max: 5, cost: [300, 1200, 4000] },
@@ -5743,11 +5745,25 @@ const GAP = 23; // 节距
 const SEG_R = 13;
 const PLAYER_Y = 664;
 const WALL_Y = 590;
-const SLOT_X = [150, 210, 110, 250, 70, 290, 30, 330]; // 从城门两边往外开
+// 点位：城外高低不同的箭楼、土台，散在路边（路：顶上往下 → y96 往右 → x314 往下 → y310 往左 → x46 往下 → y524 往右 → 城门）
+// 按解锁顺序排：先开离城门近的
+const SPOTS = [
+  { x: 120, y: 468, name: '南箭楼' },
+  { x: 252, y: 468, name: '东南土台' },
+  { x: 252, y: 372, name: '东箭楼' },
+  { x: 118, y: 372, name: '西箭楼' },
+  { x: 182, y: 236, name: '中土台' },
+  { x: 258, y: 168, name: '东北箭楼' },
+  { x: 106, y: 168, name: '西北箭楼' },
+  { x: 262, y: 572, name: '城门东台' },
+];
 const BOLT_CD = 0.36;
 
 function slotPos(i) {
-  return { x: SLOT_X[i], y: WALL_Y };
+  return SPOTS[i];
+}
+function rangeOf(r, m) {
+  return m.rng ? m.rng + B.stats(r).range : 0;
 }
 
 function newDefend(r) {
@@ -5789,7 +5805,7 @@ function spawnDragon(st, boss) {
   const r = st.r;
   const lv = r.lv;
   const len = boss ? lv.len + 8 : lv.len + r.wave * 3 + st.spawned * 2;
-  const base = (6 + r.wave * 5 + st.spawned * 2) * lv.hp;
+  const base = (4 + r.wave * 3 + st.spawned * 1.5) * lv.hp;
   const segs = [];
   for (let i = 0; i < len; i++) {
     let type = null;
@@ -5798,7 +5814,7 @@ function spawnDragon(st, boss) {
     if (boss && i === 0) hp *= 10;
     segs.push({ hp, hp0: hp, type, s: -i * GAP - 10, alive: true, burnT: 0, frozen: 0, chest: false, id: i });
   }
-  st.dragons.push({ segs, len0: len, v: (62 + r.wave * 6 + lv.hp * 6) * (boss ? 0.7 : 1), boss, dashCd: 6 + r.R() * 3, glow: 0, dash: 0, slowT: 0, slowK: 0, freezeT: 0, blockT: 0 });
+  st.dragons.push({ segs, len0: len, v: (52 + r.wave * 5 + lv.hp * 5) * (boss ? 0.7 : 1), boss, dashCd: 6 + r.R() * 3, glow: 0, dash: 0, slowT: 0, slowK: 0, freezeT: 0, blockT: 0 });
   st.spawned++;
 }
 
@@ -5972,7 +5988,6 @@ function pickTarget(st, x, y, range) {
 function stepMachines(st, dt) {
   const r = st.r;
   const stt = B.stats(r);
-  const range = 330 + stt.range;
   r.slots.forEach((mc, i) => {
     if (!mc) return;
     const m = D.M[mc.id];
@@ -5988,7 +6003,7 @@ function stepMachines(st, dt) {
       ev(st, { t: 'healTick', x: pos.x, y: pos.y });
       return;
     }
-    const tg = pickTarget(st, pos.x, pos.y, range);
+    const tg = pickTarget(st, pos.x, pos.y, rangeOf(r, m));
     if (!tg) {
       st.cd[i] = 0.2;
       return;
@@ -6048,8 +6063,8 @@ function stepMachines(st, dt) {
         break;
       }
       case 'fireWall': {
-        st.zones.push({ kind: 'fire', y: tg.p.y, t: 2, dps: dmg, s0: -1, s1: -1, k: 1 });
-        if (t4) st.zones.push({ kind: 'fire', y: tg.p.y - 60, t: 2, dps: dmg, s0: -1, s1: -1, k: 1 });
+        st.pools.push({ x: tg.p.x, y: tg.p.y, R: 46 * (1 + stt.aoe / 100), dps: dmg, t: 2, fire: true });
+        if (t4) st.pools.push({ x: pos.x + (tg.p.x - pos.x) * 0.5, y: pos.y + (tg.p.y - pos.y) * 0.5, R: 40, dps: dmg, t: 2, fire: true });
         ev(st, { t: 'fireWall', y: tg.p.y });
         break;
       }
@@ -6068,7 +6083,11 @@ function stepMachines(st, dt) {
       }
       case 'blade': {
         const n = t4 ? 3 : 1;
-        for (let k = 0; k < n; k++) st.shots.push({ kind: 'blade', x: tg.p.x + (k - (n - 1) / 2) * 30, y: pos.y - 10, vy: -520, dmg, hitSet: [], back: false });
+        for (let k = 0; k < n; k++) {
+          const a = Math.atan2(tg.p.y - pos.y, tg.p.x - pos.x) + (k - (n - 1) / 2) * 0.4;
+          const R = rangeOf(r, m);
+          st.shots.push({ kind: 'blade', x: pos.x, y: pos.y, ox: pos.x, oy: pos.y, tx: pos.x + Math.cos(a) * R, ty: pos.y + Math.sin(a) * R, t: 0, dmg, hitSet: [], back: false });
+        }
         ev(st, { t: 'bladeThrow', x: pos.x, y: pos.y });
         break;
       }
@@ -6118,10 +6137,12 @@ function stepShots(st, dt) {
         st.shots.splice(i, 1);
       }
     } else if (s.kind === 'blade') {
-      s.y += s.vy * dt;
-      if (!s.back && s.y < 60) {
+      s.t += dt / 0.45;
+      const k = s.back ? 2 - s.t : s.t;
+      s.x = s.ox + (s.tx - s.ox) * k;
+      s.y = s.oy + (s.ty - s.oy) * k;
+      if (!s.back && s.t >= 1) {
         s.back = true;
-        s.vy = 520;
         s.hitSet = [];
       }
       forEachSeg(st, (g, d) => {
@@ -6132,7 +6153,7 @@ function stepShots(st, dt) {
           hit(st, g, d, s.dmg, { machine: true });
         }
       });
-      if (s.back && s.y > WALL_Y) st.shots.splice(i, 1);
+      if (s.back && s.t >= 2) st.shots.splice(i, 1);
     }
   }
   // 区域：网、泥、火墙、岩浆
@@ -6182,7 +6203,6 @@ function step(st, dt) {
     spawnDragon(st, false);
     st.spawnT = st.waveDur * (bossWave ? 0.6 : 0.42);
   }
-  stepPlayer(st, dt);
   stepMachines(st, dt);
   stepShots(st, dt);
   moveDragons(st, dt);
@@ -6227,7 +6247,7 @@ function botX(st) {
   return best ? segXY(st, best).x : D.FIELD.w / 2;
 }
 
-module.exports = { newDefend, step, nextWave, slotPos, segXY, alive, botX, SLOT_X, WALL_Y, PLAYER_Y, SEG_R, GAP };
+module.exports = { newDefend, step, nextWave, slotPos, rangeOf, segXY, alive, botX, SPOTS, WALL_Y, PLAYER_Y, SEG_R, GAP };
 
 });
 __def("js/mo/main.js", function (module, exports, require) {
@@ -6339,7 +6359,7 @@ function onTouch(type, id, px, py) {
         return;
       }
     }
-    if (G.scr === 'play') G.drag = { id, fx0: fx, x0: G.st.targetX };
+    if (G.scr === 'play') G.sel = -1;
   } else if (type === 'move') {
     if (G.drag && G.drag.id === id && G.scr === 'play') G.st.targetX = clamp(G.drag.x0 + (fx - G.drag.fx0) * 1.15, 14, FW - 14);
   } else if (type === 'up') {
@@ -6380,14 +6400,27 @@ function press(id) {
     const mc = B.combine(r, G.benchSel);
     if (mc) {
       G.benchSel = [];
-      G.sel = -1;
       snd('upgrade', 0, 0.6);
-      const where = autoPlace(r);
-      pop(D.M[mc.id].name + (mc.tier > 1 ? ' · 鲁班尺高一阶！' : '') + (where ? ' → ' + where : ''), FW / 2, 268, '#ffd65a', 16);
+      G.sel = r.bench.length - 1;
+      if (r.lv.mode === 'defend') pop(D.M[mc.id].name + '：点亮着的点位放下', FW / 2, 600, '#ffd65a', 15);
+      else pop(D.M[mc.id].name + '：点上面车上的格子装上去', FW / 2, 268, '#ffd65a', 15);
     }
   } else if (id.startsWith('tray')) {
     const i = +id.slice(4);
     G.sel = G.sel === i ? -1 : i;
+  } else if (id.startsWith('spot')) {
+    const si = +id.slice(4);
+    if (G.sel >= 0) {
+      const res = B.place(r, G.sel, si);
+      if (res && res.blocked) pop('一夫当关：只能放 1 件', FW / 2, 560, '#ff8a5a', 15);
+      else if (res) {
+        snd(res.res === 'merge' ? 'evolve' : 'clang', 0, 0.5);
+        const p = F.slotPos(si);
+        pop(res.res === 'merge' ? '叠成 ' + res.slot.tier + ' 阶！' : '放下 ' + D.M[res.slot.id].name, p.x, p.y - 26, '#ffd65a', 15);
+        G.spotView = { i: si, t: 1.6 };
+      }
+      G.sel = -1;
+    } else if (r.slots[si]) G.spotView = { i: si, t: 1.6 };
   } else if (id.startsWith('slot')) {
     const si = +id.slice(4);
     if (G.sel >= 0) {
@@ -6411,7 +6444,6 @@ function press(id) {
   } else if (id === 'refresh') {
     if (!B.refresh(r)) snd('alarm', 200, 0.3);
   } else if (id === 'nextWave') {
-    autoPlace(r);
     G.scr = 'play';
     G.benchSel = [];
     G.sel = -1;
@@ -6492,8 +6524,11 @@ function killFx(x, y, col) {
 }
 // 材料飞进右上角口袋（0.1 秒闪一圈）
 function orb(x, y, el) {
-  const tx = 214 + D.ELS.indexOf(el) * 28;
-  G.fx.push({ k: 'orb', x, y, x0: x, y0: y, tx, ty: 32, t: 0, life: 0.55, col: D.EL[el].col });
+  const i = D.ELS.indexOf(el);
+  const live = G.r && G.r.lv.mode === 'defend';
+  const tx = live ? 28 + i * 40 : 214 + i * 28;
+  const ty = live ? 663 : 32;
+  G.fx.push({ k: 'orb', x, y, x0: x, y0: y, tx, ty, t: 0, life: 0.55, col: D.EL[el].col });
 }
 
 const sy = (wy) => A.HEAD_Y - (wy - G.st.head.wy);
@@ -6657,19 +6692,33 @@ function frame() {
     let n = 0;
     while (acc >= 1 / 60 && n++ < 40 && G.scr === 'play') {
       acc -= 1 / 60;
-      if (G.bot || (G.r.lv.mode === 'defend' && !G.drag)) G.st.targetX = S().botX(G.st);
+      if (G.r.lv.mode === 'attack') G.st.targetX = S().botX(G.st);
+      if (G.bot && G.r.lv.mode === 'defend' && Math.random() < 0.02) botCombine();
       S().step(G.st, 1 / 60);
       handleEvents();
     }
   }
   if (G.bot && G.scr === 'shop') botShop();
   if (G.banner > 0) G.banner -= dt;
+  if (G.spotView) {
+    G.spotView.t -= dt;
+    if (G.spotView.t <= 0) G.spotView = null;
+  }
   if (G.teach) {
     G.teach.t += dt;
     if (G.teach.t > 5) G.teach = null;
   }
   stepFx(dt);
   render();
+}
+function botCombine() {
+  const r = G.r;
+  for (let k = 0; k < 10; k++) {
+    const m = D.MACHINES.find((mm) => r.recipes.indexOf(mm.id) >= 0 && mm.els.every((e) => r.mats[e] >= mm.els.filter((x) => x === e).length));
+    if (!m) break;
+    B.combine(r, m.els);
+  }
+  autoPlace(r);
 }
 function botShop() {
   const r = G.r;
@@ -6733,6 +6782,7 @@ function render() {
     drawFx();
     ctx.restore();
     drawHud();
+    if (G.scr === 'play' && G.r.lv.mode === 'defend') drawLiveBench();
     if (G.scr === 'shop') drawShop();
     if (G.scr === 'result') drawResult();
   }
@@ -6894,30 +6944,72 @@ function drawDefend() {
       bigText(ctx, String(Math.ceil(g.hp)), p.x, p.y + 1, g.hp >= 100 ? 9 : 11, '#fff8e6', LINE);
     }
   }
-  // 城墙 + 点位
+  // 城墙 + 城门（龙撞进门扣血）
   const wy = F.WALL_Y;
   ctx.fillStyle = '#6f5d4a';
   ctx.fillRect(0, wy - 6, FW, 50);
   ctx.strokeStyle = LINE;
   ctx.lineWidth = 2;
   ctx.strokeRect(-2, wy - 6, FW + 4, 50);
+  for (let x = 4; x < FW; x += 30) {
+    if (Math.abs(x + 9 - FW / 2) < 34) continue;
+    ctx.fillStyle = '#7d6a55';
+    ctx.fillRect(x, wy - 18, 18, 12);
+    ctx.strokeRect(x, wy - 18, 18, 12);
+  }
   ctx.fillStyle = '#3a2a1c';
   roundRect(ctx, FW / 2 - 24, wy - 4, 48, 46, 18);
   ctx.fill();
+  if (IMG.hero.ok) ctx.drawImage(IMG.hero, FW / 2 + 26, wy - 52, 26, 60);
+  // 点位：城外高低不同的箭楼、土台
   const r = G.r;
-  const total = D.META.slots.max;
-  for (let i = 0; i < total; i++) {
-    const p = F.slotPos(i);
+  const hand = G.sel >= 0 ? D.M[r.bench[G.sel].id] : null;
+  F.SPOTS.forEach((p, i) => {
     const open = i < r.slots.length;
-    ctx.fillStyle = open ? '#4a3a2a' : 'rgba(40,30,20,0.6)';
+    const mc = r.slots[i];
+    // 射程圈：选中手上的机关时，空点位都画一圈；点了某个点位就画它的圈
+    const showR = hand && open && (!mc || (mc.id === r.bench[G.sel].id && mc.tier === r.bench[G.sel].tier)) ? F.rangeOf(r, hand) : G.spotView && G.spotView.i === i && mc ? F.rangeOf(r, D.M[mc.id]) : 0;
+    if (showR) {
+      ctx.fillStyle = 'rgba(255,214,90,0.10)';
+      ctx.strokeStyle = 'rgba(255,214,90,0.7)';
+      ctx.setLineDash([6, 6]);
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, showR, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    // 台子
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.beginPath();
+    ctx.ellipse(p.x + 3, p.y + 14, 22, 9, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = open ? '#8d7962' : 'rgba(70,58,46,0.7)';
     ctx.strokeStyle = LINE;
-    ctx.lineWidth = 1.5;
-    roundRect(ctx, p.x - 17, p.y - 17, 34, 34, 8);
+    ctx.lineWidth = 2;
+    roundRect(ctx, p.x - 20, p.y - 8, 40, 22, 6);
     ctx.fill();
     ctx.stroke();
-    if (!open) bigText(ctx, '锁', p.x, p.y, 11, '#8a7a66', LINE);
-    else if (r.slots[i]) machineIcon(r.slots[i].id, r.slots[i].tier, p.x, p.y, 14);
-  }
+    ctx.fillStyle = open ? '#a8937a' : 'rgba(90,76,60,0.7)';
+    roundRect(ctx, p.x - 17, p.y - 14, 34, 12, 4);
+    ctx.fill();
+    ctx.stroke();
+    if (!open) {
+      bigText(ctx, '锁', p.x, p.y + 2, 11, '#a89880', LINE);
+      return;
+    }
+    G.btns.push({ id: 'spot' + i, x: p.x - 24, y: p.y - 30, w: 48, h: 48 });
+    if (mc) machineIcon(mc.id, mc.tier, p.x, p.y - 14, 14, G.spotView && G.spotView.i === i);
+    else if (hand) {
+      ctx.strokeStyle = 'rgba(255,214,90,' + (0.6 + 0.4 * Math.sin(G.t * 10)) + ')';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y - 8, 16, 0, Math.PI * 2);
+      ctx.stroke();
+      bigText(ctx, '放', p.x, p.y - 8, 12, '#ffd65a', LINE);
+    }
+  });
   // 子弹
   ctx.strokeStyle = '#fff3c4';
   ctx.lineWidth = 2.5;
@@ -6954,12 +7046,6 @@ function drawDefend() {
       ctx.stroke();
       ctx.restore();
     }
-  }
-  // 阿铸
-  if (IMG.hero.ok) ctx.drawImage(IMG.hero, st.px - 22, F.PLAYER_Y - 74, 44, 100);
-  else {
-    ctx.fillStyle = '#c8402c';
-    ctx.fillRect(st.px - 10, F.PLAYER_Y - 30, 20, 40);
   }
 }
 
@@ -7146,14 +7232,68 @@ function drawHud() {
     ctx.fillStyle = 'rgba(20,14,10,0.8)';
     ctx.fillRect(0, 250, FW, 80);
     bigText(ctx, r.wave === 0 ? r.lv.story : '第 ' + (r.wave + 1) + ' 波', FW / 2, 280, r.wave === 0 ? 16 : 24, '#ffd65a', LINE);
-    bigText(ctx, r.lv.mode === 'defend' ? '守住城门！' : '冲到城门！', FW / 2, 308, 14, '#fff8e6', LINE);
+    bigText(ctx, r.lv.mode === 'defend' ? '合机关、摆点位，守住城门！' : '车自己开，你在驿站合机关、装上车', FW / 2, 308, 14, '#fff8e6', LINE);
     ctx.restore();
   }
   if (G.teach && G.scr === 'play' && G.banner <= 0) {
     ctx.fillStyle = 'rgba(26,18,12,0.88)';
-    roundRect(ctx, 16, 470, FW - 32, 40, 10);
+    roundRect(ctx, 16, 430, FW - 32, 40, 10);
     ctx.fill();
-    bigText(ctx, G.teach.text, FW / 2, 490, 12, '#ffe9b0', LINE);
+    bigText(ctx, G.teach.text, FW / 2, 450, 12, '#ffe9b0', LINE);
+  }
+}
+
+// —— 守城：打的时候常驻在下面的机关台（照《赵云与阿斗》边打边合）——
+function canMake(r) {
+  return D.MACHINES.some((m) => r.recipes.indexOf(m.id) >= 0 && m.els.every((e) => r.mats[e] >= m.els.filter((x) => x === e).length));
+}
+function drawLiveBench() {
+  const r = G.r;
+  const y0 = 642;
+  ctx.fillStyle = 'rgba(16,10,6,0.86)';
+  roundRect(ctx, 4, y0, FW - 8, 76, 12);
+  ctx.fill();
+  if (canMake(r)) {
+    ctx.strokeStyle = 'rgba(255,214,90,' + (0.5 + 0.4 * Math.sin(G.t * 8)) + ')';
+    ctx.lineWidth = 3;
+    roundRect(ctx, 4, y0, FW - 8, 76, 12);
+    ctx.stroke();
+  }
+  // 五种材料（点了放进格子）
+  D.ELS.forEach((e, i) => {
+    const x = 10 + i * 40;
+    const left = r.mats[e] - G.benchSel.filter((q) => q === e).length;
+    btn('mat_' + e, x, y0 + 6, 36, 30, D.EL[e].name + left, left > 0 ? D.EL[e].dark : '#3a3028', '', { size: 12, dis: left <= 0 });
+  });
+  // 格子 + 合
+  for (let i = 0; i < r.bench2; i++) {
+    const x = 214 + i * 34;
+    const e = G.benchSel[i];
+    G.btns.push({ id: 'bs' + i, x, y0: 0, y: y0 + 6, w: 30, h: 30 });
+    ctx.fillStyle = e ? D.EL[e].col : '#2a2018';
+    ctx.strokeStyle = LINE;
+    ctx.lineWidth = 1.5;
+    roundRect(ctx, x, y0 + 6, 30, 30, 7);
+    ctx.fill();
+    ctx.stroke();
+    if (e) bigText(ctx, D.EL[e].name, x + 15, y0 + 21, 14, LINE, '#fff8e6');
+  }
+  const pv = B.preview(r, G.benchSel);
+  const lbl = pv.state === 'ok' ? '合 ' + pv.m.name : pv.state === 'locked' ? '没配方' : pv.state === 'none' ? '合不出' : '放 2 个';
+  btn('combine', 214 + r.bench2 * 34, y0 + 6, FW - 222 - r.bench2 * 34, 30, lbl, pv.state === 'ok' ? '#3f8a3a' : '#4a3e34', '', { size: 12, dis: pv.state !== 'ok' });
+  // 第二行：手上的机关（点一下选中，再点地图上亮着的点位）
+  if (r.bench.length) {
+    bigText(ctx, '手上：', 12, y0 + 56, 11, '#cbb8a8', LINE, 'left');
+    r.bench.forEach((m, i) => {
+      const x = 64 + i * 34;
+      if (x > FW - 20) return;
+      G.btns.push({ id: 'tray' + i, x: x - 15, y: y0 + 41, w: 30, h: 30 });
+      machineIcon(m.id, m.tier, x, y0 + 55, 11, G.sel === i);
+    });
+    if (G.sel >= 0) bigText(ctx, '点亮着的点位放下', FW - 12, y0 + 56, 11, '#ffd65a', LINE, 'right');
+  } else {
+    const tip = pv.state === 'ok' ? pv.m.tip.split(' / ')[0] : canMake(r) ? '有能合的！点两个材料' : '打碎龙节会掉材料，飞进上面';
+    bigText(ctx, tip, FW / 2, y0 + 56, 11, pv.state === 'ok' ? '#ffd65a' : '#cbb8a8', LINE);
   }
 }
 
@@ -7166,7 +7306,7 @@ function drawShop() {
   const res = G.waveRes || { coins: 0 };
   bigText(ctx, '第 ' + r.wave + ' 波守住了' + (res.coins ? '  收获 +' + res.coins : ''), FW / 2, 72, 16, '#ffd65a', LINE);
   // 点位
-  bigText(ctx, r.lv.mode === 'defend' ? '城墙点位（合好的机关会自动摆上来）' : '车上的格子（合好的机关会自动装上来）', FW / 2, 96, 11, '#cbb8a8', LINE);
+  bigText(ctx, r.lv.mode === 'defend' ? '守城点位（想换位置：点下面的机关，再点这里）' : '车上的格子（点下面的机关，再点这里装上去）', FW / 2, 96, 11, '#cbb8a8', LINE);
   const n = r.slots.length;
   const sw = Math.min(40, (FW - 30) / n - 4);
   r.slots.forEach((s, i) => {
@@ -7189,7 +7329,10 @@ function drawShop() {
     ctx.fill();
     bigText(ctx, D.EL[e].name + ' ' + bc[e] + '/6', x, 161, 11, bc[e] >= 2 ? LINE : '#a89880', bc[e] >= 2 ? '#fff8e6' : LINE);
   });
-  // 机关台
+  if (r.lv.mode === 'defend') {
+    bigText(ctx, '守城时合成在打的时候做；这里升级、买东西', FW / 2, 196, 12, '#cbb8a8', LINE);
+  } else {
+  // 机关台（进攻：在驿站合）
   bigText(ctx, '机关台：点材料放进来', FW / 2, 186, 12, '#fff8e6', LINE);
   D.ELS.forEach((e, i) => {
     const x = 22 + i * 64;
@@ -7211,8 +7354,9 @@ function drawShop() {
   const pv = B.preview(r, G.benchSel);
   const lbl = pv.state === 'ok' ? '合成 ' + pv.m.name : pv.state === 'locked' ? '配方没开：' + pv.m.name : pv.state === 'none' ? '合不出' : '放 2 个';
   btn('combine', 70 + r.bench2 * 58, 244, FW - 86 - r.bench2 * 58, 48, lbl, pv.state === 'ok' ? '#3f8a3a' : '#4a3e34', pv.state === 'ok' ? pv.m.tip.split(' / ')[r.lv.mode === 'defend' ? 0 : 1] : '', { size: 14, dis: pv.state !== 'ok' });
+  }
   // 做好的机关
-  bigText(ctx, r.bench.length ? '放不下的机关（点一下选中，再点上面的格子换上去）' : '想换位置：点这里的机关，再点上面的格子', FW / 2, 306, 11, '#cbb8a8', LINE);
+  bigText(ctx, r.bench.length ? '手上的机关（点一下选中，再点上面的格子装上去）' : '合好的机关会放在这里', FW / 2, 306, 11, '#cbb8a8', LINE);
   r.bench.forEach((m, i) => {
     const x = 24 + i * 46;
     if (x > FW - 70) return;
@@ -7364,7 +7508,7 @@ function drawBrief() {
   ctx.stroke();
   bigText(ctx, lv.id + (lv.boss ? ' · Boss' : '') + (lv.challenge ? ' · 挑战' : ''), FW / 2, 98, 20, '#ffd65a', LINE);
   wrap(lv.story, 30, 128, FW - 60, 14);
-  const mode = lv.mode === 'defend' ? '守城：阿铸自动射箭，你只管波间合机关，机关会摆上城墙' : (lv.car === 'dragon' ? '进攻：开机关龙（' + metaNow().dragonLen + ' 格）' : '进攻：开小工程车（' + metaNow().cartSlots + ' 格）') + '，左右拖着躲砖、冲到城门';
+  const mode = lv.mode === 'defend' ? '守城：边打边合机关，自己挑路边的点位放，射程圈里的才打得到' : (lv.car === 'dragon' ? '进攻：机关龙（' + metaNow().dragonLen + ' 格）' : '进攻：小工程车（' + metaNow().cartSlots + ' 格）') + '自己开，你在驿站合机关、装上车';
   wrap(mode, 30, 170, FW - 60, 12);
   const n = D.BUILDERS.filter((b) => !b.locked).length;
   bigText(ctx, '机关师 · 已解锁 ' + n + ' / ' + D.BUILDERS.length, FW / 2, 214, 14, '#fff8e6', LINE);

@@ -10,11 +10,25 @@ const GAP = 23; // 节距
 const SEG_R = 13;
 const PLAYER_Y = 664;
 const WALL_Y = 590;
-const SLOT_X = [150, 210, 110, 250, 70, 290, 30, 330]; // 从城门两边往外开
+// 点位：城外高低不同的箭楼、土台，散在路边（路：顶上往下 → y96 往右 → x314 往下 → y310 往左 → x46 往下 → y524 往右 → 城门）
+// 按解锁顺序排：先开离城门近的
+const SPOTS = [
+  { x: 120, y: 468, name: '南箭楼' },
+  { x: 252, y: 468, name: '东南土台' },
+  { x: 252, y: 372, name: '东箭楼' },
+  { x: 118, y: 372, name: '西箭楼' },
+  { x: 182, y: 236, name: '中土台' },
+  { x: 258, y: 168, name: '东北箭楼' },
+  { x: 106, y: 168, name: '西北箭楼' },
+  { x: 262, y: 572, name: '城门东台' },
+];
 const BOLT_CD = 0.36;
 
 function slotPos(i) {
-  return { x: SLOT_X[i], y: WALL_Y };
+  return SPOTS[i];
+}
+function rangeOf(r, m) {
+  return m.rng ? m.rng + B.stats(r).range : 0;
 }
 
 function newDefend(r) {
@@ -56,7 +70,7 @@ function spawnDragon(st, boss) {
   const r = st.r;
   const lv = r.lv;
   const len = boss ? lv.len + 8 : lv.len + r.wave * 3 + st.spawned * 2;
-  const base = (6 + r.wave * 5 + st.spawned * 2) * lv.hp;
+  const base = (4 + r.wave * 3 + st.spawned * 1.5) * lv.hp;
   const segs = [];
   for (let i = 0; i < len; i++) {
     let type = null;
@@ -65,7 +79,7 @@ function spawnDragon(st, boss) {
     if (boss && i === 0) hp *= 10;
     segs.push({ hp, hp0: hp, type, s: -i * GAP - 10, alive: true, burnT: 0, frozen: 0, chest: false, id: i });
   }
-  st.dragons.push({ segs, len0: len, v: (62 + r.wave * 6 + lv.hp * 6) * (boss ? 0.7 : 1), boss, dashCd: 6 + r.R() * 3, glow: 0, dash: 0, slowT: 0, slowK: 0, freezeT: 0, blockT: 0 });
+  st.dragons.push({ segs, len0: len, v: (52 + r.wave * 5 + lv.hp * 5) * (boss ? 0.7 : 1), boss, dashCd: 6 + r.R() * 3, glow: 0, dash: 0, slowT: 0, slowK: 0, freezeT: 0, blockT: 0 });
   st.spawned++;
 }
 
@@ -239,7 +253,6 @@ function pickTarget(st, x, y, range) {
 function stepMachines(st, dt) {
   const r = st.r;
   const stt = B.stats(r);
-  const range = 330 + stt.range;
   r.slots.forEach((mc, i) => {
     if (!mc) return;
     const m = D.M[mc.id];
@@ -255,7 +268,7 @@ function stepMachines(st, dt) {
       ev(st, { t: 'healTick', x: pos.x, y: pos.y });
       return;
     }
-    const tg = pickTarget(st, pos.x, pos.y, range);
+    const tg = pickTarget(st, pos.x, pos.y, rangeOf(r, m));
     if (!tg) {
       st.cd[i] = 0.2;
       return;
@@ -315,8 +328,8 @@ function stepMachines(st, dt) {
         break;
       }
       case 'fireWall': {
-        st.zones.push({ kind: 'fire', y: tg.p.y, t: 2, dps: dmg, s0: -1, s1: -1, k: 1 });
-        if (t4) st.zones.push({ kind: 'fire', y: tg.p.y - 60, t: 2, dps: dmg, s0: -1, s1: -1, k: 1 });
+        st.pools.push({ x: tg.p.x, y: tg.p.y, R: 46 * (1 + stt.aoe / 100), dps: dmg, t: 2, fire: true });
+        if (t4) st.pools.push({ x: pos.x + (tg.p.x - pos.x) * 0.5, y: pos.y + (tg.p.y - pos.y) * 0.5, R: 40, dps: dmg, t: 2, fire: true });
         ev(st, { t: 'fireWall', y: tg.p.y });
         break;
       }
@@ -335,7 +348,11 @@ function stepMachines(st, dt) {
       }
       case 'blade': {
         const n = t4 ? 3 : 1;
-        for (let k = 0; k < n; k++) st.shots.push({ kind: 'blade', x: tg.p.x + (k - (n - 1) / 2) * 30, y: pos.y - 10, vy: -520, dmg, hitSet: [], back: false });
+        for (let k = 0; k < n; k++) {
+          const a = Math.atan2(tg.p.y - pos.y, tg.p.x - pos.x) + (k - (n - 1) / 2) * 0.4;
+          const R = rangeOf(r, m);
+          st.shots.push({ kind: 'blade', x: pos.x, y: pos.y, ox: pos.x, oy: pos.y, tx: pos.x + Math.cos(a) * R, ty: pos.y + Math.sin(a) * R, t: 0, dmg, hitSet: [], back: false });
+        }
         ev(st, { t: 'bladeThrow', x: pos.x, y: pos.y });
         break;
       }
@@ -385,10 +402,12 @@ function stepShots(st, dt) {
         st.shots.splice(i, 1);
       }
     } else if (s.kind === 'blade') {
-      s.y += s.vy * dt;
-      if (!s.back && s.y < 60) {
+      s.t += dt / 0.45;
+      const k = s.back ? 2 - s.t : s.t;
+      s.x = s.ox + (s.tx - s.ox) * k;
+      s.y = s.oy + (s.ty - s.oy) * k;
+      if (!s.back && s.t >= 1) {
         s.back = true;
-        s.vy = 520;
         s.hitSet = [];
       }
       forEachSeg(st, (g, d) => {
@@ -399,7 +418,7 @@ function stepShots(st, dt) {
           hit(st, g, d, s.dmg, { machine: true });
         }
       });
-      if (s.back && s.y > WALL_Y) st.shots.splice(i, 1);
+      if (s.back && s.t >= 2) st.shots.splice(i, 1);
     }
   }
   // 区域：网、泥、火墙、岩浆
@@ -449,7 +468,6 @@ function step(st, dt) {
     spawnDragon(st, false);
     st.spawnT = st.waveDur * (bossWave ? 0.6 : 0.42);
   }
-  stepPlayer(st, dt);
   stepMachines(st, dt);
   stepShots(st, dt);
   moveDragons(st, dt);
@@ -494,4 +512,4 @@ function botX(st) {
   return best ? segXY(st, best).x : D.FIELD.w / 2;
 }
 
-module.exports = { newDefend, step, nextWave, slotPos, segXY, alive, botX, SLOT_X, WALL_Y, PLAYER_Y, SEG_R, GAP };
+module.exports = { newDefend, step, nextWave, slotPos, rangeOf, segXY, alive, botX, SPOTS, WALL_Y, PLAYER_Y, SEG_R, GAP };
