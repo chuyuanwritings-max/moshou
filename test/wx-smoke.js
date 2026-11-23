@@ -6,6 +6,7 @@ const ctx = new Proxy({}, {
   get(t, k) {
     if (k in t) return t[k];
     if (k === 'createLinearGradient' || k === 'createRadialGradient') return () => ({ addColorStop() {} });
+    if (k === 'measureText') return (s) => ({ width: String(s).length * 12 });
     return (...a) => { calls.add(k); };
   },
   set(t, k, v) { t[k] = v; return true; },
@@ -37,7 +38,11 @@ const touch = (type, x, y) => handlers[type]({ changedTouches: [{ identifier: 1,
 touch('down', 195, 760);
 for (let i = 0; i < 600; i++) { touch('move', 195 + Math.sin(i / 20) * 150, 760); run(1); }
 touch('up', 195, 760);
-for (let k = 0; k < 20; k++) { touch('down', 195, 420); touch('up', 195, 420); run(30); }
+// 0.6：主页点「一攻一守」→ 地图第 1 关 → 出发 → 打一会儿
+for (const [x, y] of [[195, 420], [195, 725], [195, 640]]) { touch('down', x, y); touch('up', x, y); run(40); }
+touch('down', 195, 760);
+for (let i = 0; i < 900; i++) { touch('move', 195 + Math.sin(i / 20) * 150, 760); run(1); }
+touch('up', 195, 760);
 run(300);
 Date.now = realNow;
 console.log('微信环境跑通：' + frames.length + ' 帧排队中，画图调用 ' + calls.size + ' 种');

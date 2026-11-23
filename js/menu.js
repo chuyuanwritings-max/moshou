@@ -12,8 +12,9 @@ const oy = (H - F.h * scale) / 2;
 const bg = PF.loadImage('素材/bg_city.jpg');
 
 const CARDS = [
-  { id: 'ram', key: 'A', name: '机关龙', line: '你当机关龙，撞破墨家城门', save: 'moshou_ram_v1', col: '#8a3a22', y: 318 },
-  { id: 'defend', key: 'B', name: '守城打龙', line: '你当墨家阿铸，守城打龙', save: 'moshou_v1', col: '#2f5a4a', y: 488 },
+  { id: 'mo', key: '新', name: '一攻一守', line: '五行合机关 · 守城墙、开车攻城', save: 'moshou06_v1', col: '#7a2a1e', y: 300, h: 150 },
+  { id: 'ram', key: 'A', name: '机关龙', line: '0.5 旧玩法', save: 'moshou_ram_v1', col: '#5a3a2a', y: 478, h: 84, small: true },
+  { id: 'defend', key: 'B', name: '守城打龙', line: '0.5 旧玩法', save: 'moshou_v1', col: '#2f4a40', y: 576, h: 84, small: true },
 ];
 
 const M = { t: 0, press: null, pressT: 0 };
@@ -29,7 +30,7 @@ function onTouch(type, id, px, py) {
   const fx = (px - ox) / scale;
   const fy = (py - oy) / scale;
   for (const c of CARDS) {
-    if (fx >= 24 && fx <= F.w - 24 && fy >= c.y && fy <= c.y + 146) pick(c.id);
+    if (fx >= 24 && fx <= F.w - 24 && fy >= c.y && fy <= c.y + c.h) pick(c.id);
   }
 }
 
@@ -42,6 +43,7 @@ function pick(id) {
 }
 function launch(id) {
   if (id === 'ram') require('./ram/main.js');
+  else if (id === 'mo') require('./mo/main.js');
   else require('./main.js');
   SH.go(id);
 }
@@ -88,7 +90,7 @@ function render() {
   bigText(ctx, '墨家与公输家的机关之战', F.w / 2, 214, 17, '#fff3d8', RD.LINE);
   bigText(ctx, '选一种玩法', F.w / 2, 282, 15, '#e8d7b8', RD.LINE);
   CARDS.forEach((c, i) => drawCard(c, i));
-  bigText(ctx, '原型 0.5 · 两种玩法进度分开存', F.w / 2, 690, 11, '#bfae92', RD.LINE);
+  bigText(ctx, '原型 0.6 · 一攻一守（新）；下面两张是 0.5 旧玩法', F.w / 2, 690, 11, '#bfae92', RD.LINE);
   ctx.restore();
 }
 
@@ -98,7 +100,7 @@ function drawCard(c, i) {
   const s = pressed ? 0.95 : appear;
   const x = 24;
   const w = F.w - 48;
-  const h = 146;
+  const h = c.h;
   const y = c.y;
   ctx.save();
   ctx.translate(F.w / 2, y + h / 2);
@@ -117,13 +119,19 @@ function drawCard(c, i) {
   roundRect(ctx, x + 6, y + 6, w - 12, 40, 12);
   ctx.fill();
   // 图标
-  const ix = x + 66;
-  const iy = y + h / 2 + 4;
+  const sm = c.small;
+  const ix = x + (sm ? 46 : 66);
+  const iy = y + h / 2 + (sm ? 0 : 4);
+  const ir = sm ? 30 : 46;
   ctx.fillStyle = 'rgba(0,0,0,0.25)';
   ctx.beginPath();
-  ctx.arc(ix, iy, 46, 0, Math.PI * 2);
+  ctx.arc(ix, iy, ir, 0, Math.PI * 2);
   ctx.fill();
-  if (c.id === 'ram') {
+  ctx.save();
+  ctx.translate(ix, iy);
+  ctx.scale(sm ? 0.62 : 1, sm ? 0.62 : 1);
+  ctx.translate(-ix, -iy);
+  if (c.id === 'ram' || c.id === 'mo') {
     for (let k = 2; k >= 1; k--) RD.drawCar(ctx, ix + Math.sin(M.t * 3 + k) * 3, iy + 10 + k * 15, 0, k, M.t, 0);
     ctx.save();
     ctx.translate(ix, iy - 8);
@@ -133,16 +141,20 @@ function drawCard(c, i) {
   } else {
     drawCrossbowIcon(ix, iy, M.t);
   }
+  ctx.restore();
   // 字
-  bigText(ctx, c.key, x + 136, y + 38, 22, '#ffd65a', RD.LINE, 'left');
-  bigText(ctx, c.name, x + 164, y + 40, 30, '#fff8e6', RD.LINE, 'left');
-  bigText(ctx, c.line, x + 136, y + 84, 13, '#ffe9c4', RD.LINE, 'left');
-  const sv = PF.load(c.save);
-  const lv = sv && sv.level ? sv.level + 1 : 1;
-  ctx.fillStyle = 'rgba(0,0,0,0.3)';
-  roundRect(ctx, x + 136, y + 104, 92, 26, 13);
-  ctx.fill();
-  bigText(ctx, '打到第 ' + lv + ' 关', x + 182, y + 117, 12, '#fff8e6', RD.LINE);
+  const tx = x + (sm ? 92 : 136);
+  bigText(ctx, c.key, tx, y + (sm ? 30 : 38), sm ? 16 : 22, '#ffd65a', RD.LINE, 'left');
+  bigText(ctx, c.name, tx + (sm ? 24 : 28), y + (sm ? 31 : 40), sm ? 20 : 30, '#fff8e6', RD.LINE, 'left');
+  bigText(ctx, c.line, tx, y + (sm ? 60 : 84), sm ? 11 : 13, '#ffe9c4', RD.LINE, 'left');
+  if (!sm) {
+    const sv = PF.load(c.save);
+    const done = sv && sv.cleared ? Object.keys(sv.cleared).length : 0;
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    roundRect(ctx, tx, y + 104, 110, 26, 13);
+    ctx.fill();
+    bigText(ctx, '边城 ' + done + ' / 10 关', tx + 55, y + 117, 12, '#fff8e6', RD.LINE);
+  }
   ctx.restore();
 }
 

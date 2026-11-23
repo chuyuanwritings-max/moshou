@@ -1,0 +1,1173 @@
+// 《墨守》0.6 · 主程序：地图 → 一关（守城 / 进攻，3 波）→ 波间机关台 + 小店 → 结算 → 局外工坊。
+// 规则在 defend.js / attack.js / build.js，数据在 data.js；画法借 ram/draw.js（祝有好收获画风）。
+const PF = require('../platform.js');
+const SH = require('../shell.js');
+const D = require('./data.js');
+const B = require('./build.js');
+const F = require('./defend.js');
+const A = require('./attack.js');
+const RD = require('../ram/draw.js');
+const RC = require('../ram/config.js');
+const { clamp, easeOutBack, roundRect, bigText, mix } = require('../util.js');
+
+const SAVE = 'moshou06_v1';
+const meta = Object.assign(
+  { mojing: 0, pages: 0, chars: {}, shenji: {}, cleared: {}, slotsLv: 0, benchLv: 0, wallHpLv: 0, cartLv: 0, dragonLv: 0, recipes: D.START_RECIPES.slice(), builder: 'azhu', runs: 0, seenTeach: {} },
+  PF.load(SAVE) || {}
+);
+const saveMeta = () => PF.save(SAVE, meta);
+function metaNow() {
+  return {
+    slots: D.META.slots.base + meta.slotsLv,
+    bench: D.META.bench.base + meta.benchLv,
+    wallHp: D.META.wallHp.base + meta.wallHpLv * D.META.wallHp.step,
+    cartSlots: D.META.cartSlots.base + meta.cartLv,
+    dragonLen: D.META.dragonLen.base + meta.dragonLv,
+    recipes: meta.recipes,
+    shenji: meta.shenji,
+  };
+}
+
+const { ctx, width: W, height: H, dpr } = SH.view;
+const FW = 360;
+const FH = 720;
+const scale = Math.min(W / FW, H / FH);
+const ox = (W - FW * scale) / 2;
+const oy = (H - FH * scale) / 2;
+const CITY = RC.CHAPTERS[0];
+const IMG = { bg: PF.loadImage('素材/bg_city.jpg'), hero: PF.loadImage('素材/hero.png') };
+const LINE = RD.LINE;
+
+const G = {
+  scr: 'map', // map | brief | play | shop | result | meta
+  lvIdx: 0, r: null, st: null, t: 0,
+  fx: [], pops: [], shake: 0, flash: 0, flashCol: '#fff', hitstop: 0,
+  btns: [], drag: null, sel: -1, benchSel: [], banner: 0, teach: null,
+  bot: null, speed: 1, result: null, sndCd: {}, cardsAt: 0,
+};
+
+function snd(name, gap, vol, rate) {
+  const now = PF.now();
+  if (gap && G.sndCd[name] && now - G.sndCd[name] < gap) return;
+  G.sndCd[name] = now;
+  PF.sound(name, vol, rate);
+}
+
+// —— 进一关 ——
+function unlocked(i) {
+  const lv = D.LEVELS[i];
+  if (lv.challenge) return !!meta.cleared['1-8'];
+  return i === 0 || !!meta.cleared[D.LEVELS[i - 1].id];
+}
+function startLevel(i) {
+  G.lvIdx = i;
+  const lv = D.LEVELS[i];
+  const seed = ((PF.now() % 1000000007) ^ (meta.runs * 2654435761)) >>> 0;
+  G.r = B.newRun(metaNow(), lv, meta.builder, seed || 1);
+  G.st = lv.mode === 'defend' ? F.newDefend(G.r) : A.newAttack(G.r);
+  G.scr = 'play';
+  G.fx.length = 0;
+  G.pops.length = 0;
+  G.banner = 1.6;
+  G.benchSel = [];
+  G.sel = -1;
+  G.teach = lv.teach && !meta.seenTeach[lv.id] ? { text: lv.teach, t: 0 } : null;
+  meta.seenTeach[lv.id] = 1;
+  saveMeta();
+  handleEvents();
+}
+const S = () => (G.r.lv.mode === 'defend' ? F : A);
+
+// —— 坐标 ——
+const toField = (px, py) => [(px - ox) / scale, (py - oy) / scale];
+const inR = (fx, fy, b) => fx >= b.x && fx <= b.x + b.w && fy >= b.y && fy <= b.y + b.h;
+function btn(id, x, y, w, h, label, col, sub, opt) {
+  opt = opt || {};
+  G.btns.push({ id, x, y, w, h });
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  roundRect(ctx, x + 2, y + 4, w, h, 12);
+  ctx.fill();
+  ctx.fillStyle = opt.dis ? '#4a3e34' : col;
+  ctx.strokeStyle = opt.on ? '#ffd65a' : LINE;
+  ctx.lineWidth = opt.on ? 3 : 2;
+  roundRect(ctx, x, y, w, h, 12);
+  ctx.fill();
+  ctx.stroke();
+  bigText(ctx, label, x + w / 2, y + h / 2 - (sub ? 7 : 0), opt.size || (h < 40 ? 14 : 20), opt.dis ? '#a89880' : '#fff8e6', LINE);
+  if (sub) bigText(ctx, sub, x + w / 2, y + h / 2 + 12, 11, '#ffe9b0', LINE);
+}
+
+function onTouch(type, id, px, py) {
+  const [fx, fy] = toField(px, py);
+  if (type === 'down') {
+    for (let i = G.btns.length - 1; i >= 0; i--) {
+      if (inR(fx, fy, G.btns[i])) {
+        press(G.btns[i].id);
+        return;
+      }
+    }
+    if (G.scr === 'play') G.drag = { id, fx0: fx, x0: G.st.targetX };
+  } else if (type === 'move') {
+    if (G.drag && G.drag.id === id && G.scr === 'play') G.st.targetX = clamp(G.drag.x0 + (fx - G.drag.fx0) * 1.15, 14, FW - 14);
+  } else if (type === 'up') {
+    if (G.drag && G.drag.id === id) G.drag = null;
+  }
+}
+
+function press(id) {
+  const r = G.r;
+  snd('tap', 40, 0.4);
+  if (id.startsWith('node')) {
+    const i = +id.slice(4);
+    if (!unlocked(i)) return;
+    G.lvIdx = i;
+    G.scr = 'brief';
+  } else if (id === 'go') startLevel(G.lvIdx);
+  else if (id === 'back') G.scr = 'map';
+  else if (id.startsWith('bld_')) {
+    meta.builder = id.slice(4);
+    saveMeta();
+  } else if (id === 'meta') G.scr = 'meta';
+  else if (id === 'old') SH.go('menu');
+  else if (id.startsWith('card')) {
+    B.pickCard(r, +id.slice(4));
+    snd('pick', 0, 0.5);
+  } else if (id.startsWith('mat_')) {
+    const el = id.slice(4);
+    const used = G.benchSel.filter((e) => e === el).length;
+    if (G.benchSel.length < r.bench2 && r.mats[el] > used) G.benchSel.push(el);
+  } else if (id.startsWith('bs')) {
+    G.benchSel.splice(+id.slice(2), 1);
+  } else if (id === 'combine') {
+    const mc = B.combine(r, G.benchSel);
+    if (mc) {
+      G.benchSel = [];
+      G.sel = r.bench.length - 1;
+      snd('upgrade', 0, 0.6);
+      pop(D.M[mc.id].name + (mc.tier > 1 ? ' · 鲁班尺高一阶！' : ''), FW / 2, 268, '#ffd65a', 18);
+    }
+  } else if (id.startsWith('tray')) {
+    const i = +id.slice(4);
+    G.sel = G.sel === i ? -1 : i;
+  } else if (id.startsWith('slot')) {
+    const si = +id.slice(4);
+    if (G.sel >= 0) {
+      const res = B.place(r, G.sel, si);
+      if (res && res.blocked) pop('一夫当关：只能放 1 件', FW / 2, 120, '#ff8a5a', 16);
+      else if (res) {
+        snd(res.res === 'merge' ? 'evolve' : 'clang', 0, 0.5);
+        if (res.res === 'merge') pop('合成 ' + D.M[res.slot.id].name + ' ' + res.slot.tier + ' 阶！', FW / 2, 120, '#ffd65a', 18);
+      }
+      G.sel = -1;
+    }
+  } else if (id === 'sell') {
+    if (G.sel >= 0) B.sell(r, G.sel);
+    G.sel = -1;
+  } else if (id.startsWith('buy')) {
+    if (B.buy(r, +id.slice(3))) snd('coin', 0, 0.6);
+    else snd('alarm', 200, 0.3);
+  } else if (id.startsWith('lock')) {
+    const i = +id.slice(4);
+    r.locked[i] = !r.locked[i];
+  } else if (id === 'refresh') {
+    if (!B.refresh(r)) snd('alarm', 200, 0.3);
+  } else if (id === 'nextWave') {
+    G.scr = 'play';
+    G.benchSel = [];
+    G.sel = -1;
+    S().nextWave(G.st);
+    G.banner = 1.2;
+    handleEvents();
+  } else if (id === 'again') startLevel(G.lvIdx);
+  else if (id === 'toMap') G.scr = 'map';
+  else if (id.startsWith('up_')) buyMeta(id.slice(3));
+  else if (id.startsWith('rec_')) {
+    const mid = id.slice(4);
+    if (meta.pages >= 3 && meta.recipes.indexOf(mid) < 0) {
+      meta.pages -= 3;
+      meta.recipes.push(mid);
+      saveMeta();
+      snd('evolve', 0, 0.5);
+    }
+  }
+}
+
+const META_KEYS = { slots: 'slotsLv', bench: 'benchLv', wallHp: 'wallHpLv', cartSlots: 'cartLv', dragonLen: 'dragonLv' };
+function metaCost(k) {
+  const m = D.META[k];
+  const lv = meta[META_KEYS[k]];
+  const maxLv = k === 'wallHp' ? m.max : m.max - m.base;
+  if (lv >= maxLv) return null;
+  return typeof m.cost === 'function' ? m.cost(lv) : m.cost[lv];
+}
+function buyMeta(k) {
+  const c = metaCost(k);
+  if (c === null || meta.mojing < c) {
+    snd('alarm', 200, 0.3);
+    return;
+  }
+  meta.mojing -= c;
+  meta[META_KEYS[k]]++;
+  saveMeta();
+  snd('upgrade', 0, 0.6);
+}
+
+// —— 特效 ——
+function pop(text, x, y, col, size) {
+  G.pops.push({ text, x, y, col: col || '#fff8e6', size: size || 16, t: 0, life: 0.8 });
+}
+function chunks(x, y, n, col, k) {
+  for (let i = 0; i < n; i++) {
+    const a = -Math.PI / 2 + (Math.random() - 0.5) * 2.8;
+    const v = (90 + Math.random() * 170) * (k || 1);
+    G.fx.push({ k: 'chunk', x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, t: 0, life: 0.5 + Math.random() * 0.4, s: 3 + Math.random() * 4, col });
+  }
+}
+function sparks(x, y, n, col) {
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const v = 120 + Math.random() * 200;
+    G.fx.push({ k: 'spark', x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, t: 0, life: 0.2 + Math.random() * 0.15, col: col || '#fff3c4' });
+  }
+}
+// 击杀 0.2 秒：白色放射刺光 + 碎粒 + 一缕白烟（照《土豆兄弟》逐帧）
+function killFx(x, y, col) {
+  G.fx.push({ k: 'star', x, y, t: 0, life: 0.2 });
+  chunks(x, y, 7, col, 1);
+  G.fx.push({ k: 'smoke', x, y, t: 0, life: 0.5 });
+}
+// 材料飞进右上角口袋（0.1 秒闪一圈）
+function orb(x, y, el) {
+  const tx = 214 + D.ELS.indexOf(el) * 28;
+  G.fx.push({ k: 'orb', x, y, x0: x, y0: y, tx, ty: 32, t: 0, life: 0.55, col: D.EL[el].col });
+}
+
+const sy = (wy) => A.HEAD_Y - (wy - G.st.head.wy);
+function handleEvents() {
+  const st = G.st;
+  if (!st) return;
+  const atk = G.r.lv.mode === 'attack';
+  for (const e of st.events) {
+    const x = e.x;
+    const y = atk && e.wy !== undefined ? sy(e.wy) : e.y;
+    switch (e.t) {
+      case 'hit':
+        if (e.dmg >= 1) pop(String(e.dmg), x + (Math.random() - 0.5) * 12, y - 14, e.crit ? '#ffd65a' : '#ffffff', e.crit ? 18 : 12);
+        snd('hit', 30, 0.25, 0.9 + Math.random() * 0.3);
+        break;
+      case 'kill':
+      case 'break':
+        killFx(x, y, atk ? CITY.brick[1] : RD.BRASS);
+        if (e.el) orb(x, y, e.el);
+        G.shake = Math.max(G.shake, e.boss || e.kind === 'gate' ? 12 : 3);
+        G.hitstop = Math.max(G.hitstop, e.boss ? 0.12 : 0.02);
+        snd(e.boss || e.kind === 'gate' ? 'boom' : 'break', 35, 0.5, 0.9 + Math.random() * 0.25);
+        if (e.kind === 'tower') pop('拆了弩塔！', x, y - 30, '#ffb74a', 15);
+        break;
+      case 'boom':
+      case 'kaboom':
+        sparks(x, y, 16, '#ff9a3a');
+        G.shake = Math.max(G.shake, 7);
+        snd('blast', 60, 0.5);
+        if (e.self) pop('炸了！-3', x, y - 30, '#ff6a4a', 18);
+        break;
+      case 'glow':
+        snd('alarm', 200, 0.3, 1.4);
+        break;
+      case 'dash':
+        snd('whoosh', 100, 0.5);
+        G.shake = Math.max(G.shake, 4);
+        break;
+      case 'breach':
+        G.flash = 0.25;
+        G.flashCol = '#ff4a2a';
+        G.shake = Math.max(G.shake, e.boss ? 14 : 6);
+        pop('-' + e.dmg, FW / 2, F.WALL_Y - 30, '#ff6a4a', 22);
+        snd('ram', 80, 0.6);
+        PF.vibrate(true);
+        break;
+      case 'boltHit':
+        G.flash = 0.18;
+        G.flashCol = '#ff4a2a';
+        pop('-' + e.dmg, x + 12, y - 10, '#ff6a4a', 18);
+        snd('clang', 50, 0.5);
+        break;
+      case 'deflect':
+        sparks(x, y, 6, '#fff');
+        snd('clang', 50, 0.4, 1.6);
+        break;
+      case 'chew':
+        if (Math.random() < 0.5) chunks(x, y + A.HALF, 2, CITY.brick[1], 0.6);
+        snd('hit', 35, 0.3, 1.1);
+        break;
+      case 'repair':
+        pop('+' + e.n + ' 血', x, y - 14, '#9dff7a', 16);
+        snd('coin', 40, 0.5);
+        break;
+      case 'lobBoom':
+        G.fx.push({ k: 'ring', x, y, R: e.R, t: 0, life: 0.3 });
+        sparks(x, y, 12, '#ffb04a');
+        snd('blast', 60, 0.4);
+        break;
+      case 'chain':
+        if (!atk) G.fx.push({ k: 'bolt', pts: [e.from].concat(e.pts), t: 0, life: 0.2 });
+        snd('zap', 80, 0.4);
+        break;
+      case 'frost':
+        sparks(x, y, 10, '#bfe8ff');
+        snd('freeze', 100, 0.4);
+        break;
+      case 'hammer':
+        G.shake = Math.max(G.shake, 4);
+        snd('thud', 60, 0.5);
+        break;
+      case 'overheat':
+        pop('过热', x, y - 20, '#ff8a5a', 13);
+        break;
+      case 'waveClear':
+        if (e.pts) e.pts.forEach((p) => chunks(p.x, p.y, 3, '#8a8a8a', 0.8));
+        G.flash = 0.3;
+        G.flashCol = '#ffffff';
+        snd('win', 0, 0.5);
+        G.waveClearAt = PF.now();
+        break;
+      case 'win':
+        finish(true);
+        break;
+      case 'lose':
+        finish(false, e.left);
+        break;
+      case 'bossDown':
+        pop('打倒铁头龙！', FW / 2, 280, '#ffd65a', 24);
+        break;
+    }
+  }
+  st.events.length = 0;
+  if (st.mode === 'shop' && G.scr === 'play') {
+    const res = B.waveEnd(G.r);
+    G.scr = 'shop';
+    G.waveRes = res;
+    G.cardsAt = PF.now();
+  }
+}
+
+// —— 结算：局外奖励 ——
+function finish(win, left) {
+  const lv = G.r.lv;
+  const i = G.lvIdx;
+  const first = win && !meta.cleared[lv.id];
+  let mojing = win ? 30 + i * 8 + (lv.boss ? 30 : 0) : 8 + G.r.wave * 4;
+  let pages = win ? 1 + (lv.boss ? 1 : 0) : 0;
+  const chars = [];
+  if (win) {
+    const c = G.r.R() < 0.5 ? '墨' : '斗';
+    chars.push(c);
+    if (lv.boss) chars.push(c === '墨' ? '斗' : '墨');
+  }
+  meta.mojing += mojing;
+  meta.pages += pages;
+  chars.forEach((c) => (meta.chars[c] = (meta.chars[c] || 0) + 1));
+  // 神机凑齐了没有
+  const sj = D.SHENJI[0];
+  let newShenji = false;
+  if (!meta.shenji[sj.id] && sj.chars.every((c) => (meta.chars[c] || 0) >= sj.need)) {
+    meta.shenji[sj.id] = true;
+    newShenji = true;
+  }
+  if (win) meta.cleared[lv.id] = true;
+  meta.runs++;
+  saveMeta();
+  G.result = { win, first, mojing, pages, chars, newShenji, left, wave: G.r.wave, t: 0 };
+  setTimeout0(() => (G.scr = 'result'), win ? 700 : 500);
+}
+function setTimeout0(fn, ms) {
+  if (G.bot) fn();
+  else if (typeof setTimeout === 'function') setTimeout(fn, ms);
+  else fn();
+}
+
+// —— 每帧 ——
+let last = PF.now();
+let acc = 0;
+function frame() {
+  const now = PF.now();
+  let dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  G.t += dt;
+  if (G.hitstop > 0) {
+    G.hitstop -= dt;
+    dt *= 0.2;
+  }
+  if (G.scr === 'play' && G.st) {
+    acc += dt * G.speed;
+    let n = 0;
+    while (acc >= 1 / 60 && n++ < 40 && G.scr === 'play') {
+      acc -= 1 / 60;
+      if (G.bot) G.st.targetX = S().botX(G.st);
+      S().step(G.st, 1 / 60);
+      handleEvents();
+    }
+  }
+  if (G.bot && G.scr === 'shop') botShop();
+  if (G.banner > 0) G.banner -= dt;
+  if (G.teach) {
+    G.teach.t += dt;
+    if (G.teach.t > 5) G.teach = null;
+  }
+  stepFx(dt);
+  render();
+}
+function botShop() {
+  const r = G.r;
+  while (r.cards) B.pickCard(r, 0);
+  for (let k = 0; k < 10; k++) {
+    const m = D.MACHINES.find((mm) => r.recipes.indexOf(mm.id) >= 0 && mm.els.every((e) => r.mats[e] >= mm.els.filter((x) => x === e).length));
+    if (!m) break;
+    B.combine(r, m.els);
+  }
+  for (let bi = r.bench.length - 1; bi >= 0; bi--) {
+    const mc = r.bench[bi];
+    let si = r.slots.findIndex((s) => s && s.id === mc.id && s.tier === mc.tier && s.tier < 4);
+    if (si < 0) si = r.slots.findIndex((s) => !s);
+    if (si >= 0) B.place(r, bi, si);
+  }
+  press('nextWave');
+}
+
+function stepFx(dt) {
+  for (let i = G.fx.length - 1; i >= 0; i--) {
+    const f = G.fx[i];
+    f.t += dt;
+    if (f.t >= f.life) {
+      G.fx.splice(i, 1);
+      continue;
+    }
+    if (f.vx !== undefined) {
+      f.x += f.vx * dt;
+      f.y += f.vy * dt;
+      if (f.k === 'chunk') f.vy += 500 * dt;
+    }
+    if (f.k === 'orb') {
+      const k = f.t / f.life;
+      f.x = f.x0 + (f.tx - f.x0) * k * k;
+      f.y = f.y0 + (f.ty - f.y0) * k - Math.sin(k * Math.PI) * 40;
+    }
+  }
+  for (let i = G.pops.length - 1; i >= 0; i--) {
+    const p = G.pops[i];
+    p.t += dt;
+    p.y -= 34 * dt;
+    if (p.t > p.life) G.pops.splice(i, 1);
+  }
+  G.shake *= Math.pow(0.003, dt);
+  if (G.flash > 0) G.flash -= dt;
+}
+
+// —— 画 ——
+function render() {
+  G.btns = [];
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = '#120d0a';
+  ctx.fillRect(0, 0, W, H);
+  ctx.save();
+  ctx.translate(ox, oy);
+  ctx.scale(scale, scale);
+  ctx.beginPath();
+  ctx.rect(0, 0, FW, FH);
+  ctx.clip();
+  if (G.scr === 'map' || G.scr === 'brief') drawMap();
+  else if (G.scr === 'meta') drawMeta();
+  else {
+    ctx.save();
+    ctx.translate((Math.random() - 0.5) * G.shake, (Math.random() - 0.5) * G.shake);
+    if (G.r.lv.mode === 'defend') drawDefend();
+    else drawAttack();
+    drawFx();
+    ctx.restore();
+    drawHud();
+    if (G.scr === 'shop') drawShop();
+    if (G.scr === 'result') drawResult();
+  }
+  if (G.scr === 'brief') drawBrief();
+  ctx.restore();
+}
+
+function drawBg(dark) {
+  if (IMG.bg.ok) {
+    const sc = Math.max(FW / IMG.bg.width, FH / IMG.bg.height);
+    ctx.drawImage(IMG.bg, (FW - IMG.bg.width * sc) / 2, (FH - IMG.bg.height * sc) / 2, IMG.bg.width * sc, IMG.bg.height * sc);
+  } else {
+    ctx.fillStyle = CITY.ground;
+    ctx.fillRect(0, 0, FW, FH);
+  }
+  ctx.fillStyle = 'rgba(10,6,4,' + dark + ')';
+  ctx.fillRect(0, 0, FW, FH);
+}
+
+// 机关图标：五行颜色的圆 + 名字第一个字 + 阶数小点
+function machineIcon(id, tier, x, y, s, hl) {
+  const m = D.M[id];
+  ctx.save();
+  ctx.translate(x, y);
+  const els = m.els;
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  ctx.beginPath();
+  ctx.arc(2, 3, s, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(0, 0, s, Math.PI / 2, Math.PI * 1.5);
+  ctx.fillStyle = D.EL[els[0]].col;
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(0, 0, s, -Math.PI / 2, Math.PI / 2);
+  ctx.fillStyle = D.EL[els[1]].col;
+  ctx.fill();
+  ctx.strokeStyle = hl ? '#ffd65a' : LINE;
+  ctx.lineWidth = hl ? 3 : 2;
+  ctx.beginPath();
+  ctx.arc(0, 0, s, 0, Math.PI * 2);
+  ctx.stroke();
+  bigText(ctx, m.name[0], 0, 1, s * 1.05, '#fff8e6', LINE);
+  for (let i = 0; i < tier; i++) {
+    ctx.fillStyle = '#ffd65a';
+    ctx.strokeStyle = LINE;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc((i - (tier - 1) / 2) * 7, s + 5, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+// —— 守城 ——
+let pathCache = null;
+function drawDefend() {
+  const st = G.st;
+  drawBg(0.42);
+  if (!pathCache) {
+    pathCache = PF.createOffscreen(FW, FH);
+    const g = pathCache.getContext('2d');
+    g.lineCap = 'round';
+    g.lineJoin = 'round';
+    const pts = [];
+    for (let s = 0; s <= st.path.len; s += 6) pts.push(st.path.at(s));
+    for (const [w, c] of [[40, '#1E1A16'], [36, '#7a5a34'], [26, '#9a7446']]) {
+      g.strokeStyle = c;
+      g.lineWidth = w;
+      g.beginPath();
+      pts.forEach((p, i) => (i ? g.lineTo(p.x, p.y) : g.moveTo(p.x, p.y)));
+      g.stroke();
+    }
+    g.setLineDash([4, 10]);
+    g.strokeStyle = 'rgba(30,26,22,0.5)';
+    g.lineWidth = 2;
+    g.beginPath();
+    pts.forEach((p, i) => (i ? g.lineTo(p.x, p.y) : g.moveTo(p.x, p.y)));
+    g.stroke();
+  }
+  ctx.drawImage(pathCache, 0, 0);
+  // 区域：网、泥、火墙、岩浆
+  for (const z of st.zones) {
+    if (z.kind === 'fire') {
+      ctx.fillStyle = 'rgba(255,110,40,' + (0.25 + 0.15 * Math.sin(G.t * 20)) + ')';
+      ctx.fillRect(0, z.y - 18, FW, 36);
+      continue;
+    }
+    ctx.fillStyle = z.kind === 'mud' ? 'rgba(110,80,40,0.55)' : 'rgba(90,200,80,0.35)';
+    for (let s = Math.max(0, z.s0); s < Math.min(st.path.len, z.s1); s += 14) {
+      const p = st.path.at(s);
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 16, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  for (const z of st.pools) {
+    ctx.fillStyle = 'rgba(255,90,20,0.35)';
+    ctx.beginPath();
+    ctx.arc(z.x, z.y, z.R, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // 龙：尾巴往头画
+  for (const d of st.dragons) {
+    const segs = F.alive(d);
+    for (let i = segs.length - 1; i >= 0; i--) {
+      const g = segs[i];
+      if (g.s < -20) continue;
+      const p = F.segXY(st, g);
+      if (i === 0) {
+        if (d.glow > 0) {
+          ctx.fillStyle = 'rgba(255,40,20,' + (0.35 + 0.25 * Math.sin(G.t * 30)) + ')';
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, 26, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.scale(d.boss ? 1.7 : 1.15, d.boss ? 1.7 : 1.15);
+        RD.drawHead(ctx, 0, 0, p.a + Math.PI / 2, d.dash > 0 ? 1 : 0, G.t, 0);
+        if (d.boss) {
+          ctx.fillStyle = '#7c8791';
+          ctx.strokeStyle = LINE;
+          ctx.lineWidth = 1.5;
+          ctx.rotate(p.a + Math.PI / 2);
+          roundRect(ctx, -12, -20, 24, 10, 3);
+          ctx.fill();
+          ctx.stroke();
+        }
+        ctx.restore();
+      } else {
+        RD.drawCar(ctx, p.x, p.y, p.a + Math.PI / 2, g.id, G.t, g.frozen > 0 ? 0.3 : 0);
+        if (g.type === 'shield') {
+          ctx.fillStyle = '#aab4bd';
+          ctx.strokeStyle = LINE;
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.arc(p.x + Math.cos(p.a) * 10, p.y + Math.sin(p.a) * 10, 7, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+        } else if (g.type === 'powder') {
+          ctx.fillStyle = '#9b3b26';
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, 7, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = '#ffcf4a';
+          ctx.beginPath();
+          ctx.arc(p.x + 5, p.y - 7, 2.5 + Math.sin(G.t * 20), 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      if (g.burnT > 0) {
+        ctx.fillStyle = 'rgba(255,120,40,0.5)';
+        ctx.beginPath();
+        ctx.arc(p.x, p.y - 8, 5 + Math.sin(G.t * 25) * 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      bigText(ctx, String(Math.ceil(g.hp)), p.x, p.y + 1, g.hp >= 100 ? 9 : 11, '#fff8e6', LINE);
+    }
+  }
+  // 城墙 + 点位
+  const wy = F.WALL_Y;
+  ctx.fillStyle = '#6f5d4a';
+  ctx.fillRect(0, wy - 6, FW, 50);
+  ctx.strokeStyle = LINE;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(-2, wy - 6, FW + 4, 50);
+  ctx.fillStyle = '#3a2a1c';
+  roundRect(ctx, FW / 2 - 24, wy - 4, 48, 46, 18);
+  ctx.fill();
+  const r = G.r;
+  const total = D.META.slots.max;
+  for (let i = 0; i < total; i++) {
+    const p = F.slotPos(i);
+    const open = i < r.slots.length;
+    ctx.fillStyle = open ? '#4a3a2a' : 'rgba(40,30,20,0.6)';
+    ctx.strokeStyle = LINE;
+    ctx.lineWidth = 1.5;
+    roundRect(ctx, p.x - 17, p.y - 17, 34, 34, 8);
+    ctx.fill();
+    ctx.stroke();
+    if (!open) bigText(ctx, '锁', p.x, p.y, 11, '#8a7a66', LINE);
+    else if (r.slots[i]) machineIcon(r.slots[i].id, r.slots[i].tier, p.x, p.y, 14);
+  }
+  // 子弹
+  ctx.strokeStyle = '#fff3c4';
+  ctx.lineWidth = 2.5;
+  for (const b of st.bolts) {
+    ctx.beginPath();
+    ctx.moveTo(b.x, b.y);
+    ctx.lineTo(b.x, b.y + 14);
+    ctx.stroke();
+  }
+  for (const s of st.shots) {
+    if (s.kind === 'bolt') {
+      ctx.fillStyle = s.mid === 'huochong' ? '#ff8a3a' : '#f1ede2';
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.mid === 'huochong' ? 4 : 3, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (s.kind === 'lob') {
+      const k = s.t / s.dur;
+      const x = s.x + (s.tx - s.x) * k;
+      const y = s.y + (s.ty - s.y) * k - Math.sin(k * Math.PI) * 80;
+      ctx.fillStyle = s.mid === 'zhengqi' ? '#e8f0f4' : '#6e3b1c';
+      ctx.strokeStyle = LINE;
+      ctx.beginPath();
+      ctx.arc(x, y, 7, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    } else if (s.kind === 'blade') {
+      ctx.save();
+      ctx.translate(s.x, s.y);
+      ctx.rotate(G.t * 20);
+      ctx.strokeStyle = '#cfe8ff';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(0, 0, 10, 0, Math.PI * 1.4);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+  // 阿铸
+  if (IMG.hero.ok) ctx.drawImage(IMG.hero, st.px - 22, F.PLAYER_Y - 74, 44, 100);
+  else {
+    ctx.fillStyle = '#c8402c';
+    ctx.fillRect(st.px - 10, F.PLAYER_Y - 30, 20, 40);
+  }
+}
+
+// —— 进攻 ——
+function drawAttack() {
+  const st = G.st;
+  RD.drawGround(ctx, CITY, st.head.wy);
+  const vis = (wy, m) => sy(wy) > -m && sy(wy) < FH + m;
+  for (const f of st.fences) if (vis((f.wy0 + f.wy1) / 2, 160)) RD.drawFence(ctx, f.x, sy(f.wy1), sy(f.wy0));
+  st.legEnds.forEach((wy, i) => {
+    if (i >= st.legEnds.length - 1 || !vis(wy, 30)) return;
+    const y = sy(wy);
+    ctx.fillStyle = 'rgba(200,64,44,0.85)';
+    ctx.fillRect(0, y - 12, FW, 24);
+    bigText(ctx, '驿 站 · 停下来合机关', FW / 2, y, 14, '#fff8e6', LINE);
+  });
+  for (const it of st.items) {
+    if (!it.alive || !vis(it.wy, 30)) continue;
+    RD.drawGear(ctx, it.x, sy(it.wy), 10, G.t);
+    bigText(ctx, '+' + it.n, it.x, sy(it.wy) - 18, 13, '#9dff7a', LINE);
+  }
+  for (const b of st.blocks) if (b.alive && vis(b.wy, 220)) RD.drawBlock(ctx, CITY, b, sy(b.wy), G.t, st.chewing === b ? 2.5 : 0, false);
+  for (const bo of st.bolts) RD.drawBolt(ctx, bo.x, sy(bo.wy));
+  for (const s of st.shots) RD.drawShot(ctx, s.x, sy(s.wy));
+  // 车
+  const segs = A.segments(st, A.bodyLen(st)).map((p) => ({ x: p.x, y: sy(p.wy) }));
+  const r = G.r;
+  if (st.car === 'dragon') {
+    for (let i = segs.length - 1; i >= 1; i--) {
+      const p = segs[i];
+      const q = segs[i - 1];
+      const a = Math.atan2(q.x - p.x, p.y - q.y);
+      RD.drawCar(ctx, p.x, p.y, a, i, G.t, G.flash > 0 && G.flashCol === '#ff4a2a' ? G.flash * 3 : 0);
+      if (r.slots[i - 1]) machineIcon(r.slots[i - 1].id, r.slots[i - 1].tier, p.x, p.y, 9);
+    }
+    RD.drawHead(ctx, segs[0].x, segs[0].y, 0, st.chewing ? 1 : 0, G.t, st.guard > 0 ? 1 : 0);
+  } else {
+    // 小工程车：一辆黄铜车，车上的格子
+    const p = segs[0];
+    ctx.save();
+    ctx.translate(p.x, p.y + 8);
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    roundRect(ctx, -20, -18, 44, 52, 8);
+    ctx.fill();
+    ctx.fillStyle = '#3a2a1c';
+    for (const [wx, wyy] of [[-22, -10], [17, -10], [-22, 18], [17, 18]]) ctx.fillRect(wx, wyy, 5, 10);
+    ctx.fillStyle = RD.BRASS;
+    ctx.strokeStyle = LINE;
+    ctx.lineWidth = 2;
+    roundRect(ctx, -18, -22, 36, 50, 8);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#7a1e14';
+    roundRect(ctx, -12, -30, 24, 12, 4);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+    r.slots.forEach((s, i) => {
+      const cx = p.x + (r.slots.length > 1 ? (i % 2 ? 9 : -9) : 0);
+      const cy = p.y + 4 + Math.floor(i / 2) * 18;
+      if (s) machineIcon(s.id, s.tier, cx, cy, 8);
+      else {
+        ctx.strokeStyle = 'rgba(30,26,22,0.6)';
+        ctx.strokeRect(cx - 7, cy - 7, 14, 14);
+      }
+    });
+    if (st.guard > 0) {
+      ctx.strokeStyle = 'rgba(120,220,100,0.8)';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 30, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+}
+
+function drawFx() {
+  for (const f of G.fx) {
+    const a = 1 - f.t / f.life;
+    ctx.save();
+    ctx.globalAlpha = clamp(a * 1.5, 0, 1);
+    if (f.k === 'chunk') {
+      ctx.fillStyle = f.col;
+      ctx.fillRect(f.x - f.s / 2, f.y - f.s / 2, f.s, f.s);
+    } else if (f.k === 'spark') {
+      ctx.strokeStyle = f.col;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(f.x, f.y);
+      ctx.lineTo(f.x - f.vx * 0.04, f.y - f.vy * 0.04);
+      ctx.stroke();
+    } else if (f.k === 'star') {
+      // 白色放射刺光
+      ctx.translate(f.x, f.y);
+      ctx.fillStyle = '#ffffff';
+      const k = 1 + (f.t / f.life) * 0.6;
+      for (let i = 0; i < 8; i++) {
+        ctx.rotate(Math.PI / 4);
+        ctx.beginPath();
+        ctx.moveTo(0, -3);
+        ctx.lineTo(0, -22 * k * (i % 2 ? 0.6 : 1));
+        ctx.lineTo(3, -3);
+        ctx.fill();
+      }
+    } else if (f.k === 'smoke') {
+      ctx.fillStyle = 'rgba(240,236,228,0.5)';
+      ctx.beginPath();
+      ctx.arc(f.x, f.y - f.t * 30, 6 + f.t * 16, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (f.k === 'orb') {
+      ctx.fillStyle = f.col;
+      ctx.strokeStyle = LINE;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(f.x, f.y, 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    } else if (f.k === 'ring') {
+      ctx.strokeStyle = '#ffb04a';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(f.x, f.y, f.R * (0.5 + f.t / f.life), 0, Math.PI * 2);
+      ctx.stroke();
+    } else if (f.k === 'bolt') {
+      ctx.strokeStyle = '#9fe8ff';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      f.pts.forEach((p, i) => (i ? ctx.lineTo(p.x + (Math.random() - 0.5) * 6, p.y) : ctx.moveTo(p.x, p.y)));
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+  for (const p of G.pops) {
+    ctx.save();
+    ctx.globalAlpha = clamp(1 - (p.t / p.life - 0.6) / 0.4, 0, 1);
+    bigText(ctx, p.text, p.x, p.y, p.size * easeOutBack(Math.min(1, p.t / 0.15)), p.col, LINE);
+    ctx.restore();
+  }
+  if (G.flash > 0) {
+    ctx.fillStyle = G.flashCol;
+    ctx.globalAlpha = Math.min(0.45, G.flash);
+    ctx.fillRect(0, 0, FW, FH);
+    ctx.globalAlpha = 1;
+  }
+}
+
+function drawHud() {
+  const r = G.r;
+  const st = G.st;
+  ctx.fillStyle = 'rgba(20,14,10,0.78)';
+  ctx.fillRect(0, 0, FW, 52);
+  bigText(ctx, r.lv.id + ' · ' + (r.lv.mode === 'defend' ? '守城' : '进攻'), 10, 14, 13, '#fff8e6', LINE, 'left');
+  const wv = Math.min(r.wave + 1, r.lv.waves);
+  if (r.lv.mode === 'defend') bigText(ctx, '第 ' + wv + '/' + r.lv.waves + ' 波' + (G.scr === 'play' ? ' · ' + Math.max(0, Math.ceil(st.waveT)) + ' 秒' : ''), 10, 34, 12, '#ffd65a', LINE, 'left');
+  else bigText(ctx, '第 ' + wv + '/' + r.lv.waves + ' 段', 10, 34, 12, '#ffd65a', LINE, 'left');
+  // 血
+  const bx = 112;
+  const bw = 90;
+  ctx.fillStyle = '#3a2c20';
+  roundRect(ctx, bx, 8, bw, 12, 6);
+  ctx.fill();
+  ctx.fillStyle = r.hp / r.hpMax < 0.3 ? '#ff5a3a' : '#6fcf5a';
+  roundRect(ctx, bx, 8, Math.max(6, (bw * r.hp) / r.hpMax), 12, 6);
+  ctx.fill();
+  bigText(ctx, Math.ceil(r.hp) + '/' + r.hpMax, bx + bw / 2, 14, 10, '#fff8e6', LINE);
+  RD.drawGear(ctx, bx + 6, 36, 7, G.t);
+  bigText(ctx, String(r.coins), bx + 18, 36, 13, '#ffd65a', LINE, 'left');
+  // 五行口袋
+  D.ELS.forEach((e, i) => {
+    const x = 214 + i * 28;
+    ctx.fillStyle = D.EL[e].col;
+    ctx.strokeStyle = LINE;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(x, 18, 9, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    bigText(ctx, D.EL[e].name, x, 18, 10, LINE, '#fff8e6');
+    bigText(ctx, String(r.mats[e]), x, 38, 12, '#fff8e6', LINE);
+  });
+  if (G.banner > 0 && G.scr === 'play') {
+    ctx.save();
+    ctx.globalAlpha = clamp(G.banner / 0.3, 0, 1);
+    ctx.fillStyle = 'rgba(20,14,10,0.8)';
+    ctx.fillRect(0, 250, FW, 80);
+    bigText(ctx, r.wave === 0 ? r.lv.story : '第 ' + (r.wave + 1) + ' 波', FW / 2, 280, r.wave === 0 ? 16 : 24, '#ffd65a', LINE);
+    bigText(ctx, r.lv.mode === 'defend' ? '守住城门！' : '冲到城门！', FW / 2, 308, 14, '#fff8e6', LINE);
+    ctx.restore();
+  }
+  if (G.teach && G.scr === 'play' && G.banner <= 0) {
+    ctx.fillStyle = 'rgba(26,18,12,0.88)';
+    roundRect(ctx, 16, 470, FW - 32, 40, 10);
+    ctx.fill();
+    bigText(ctx, G.teach.text, FW / 2, 490, 12, '#ffe9b0', LINE);
+  }
+}
+
+// —— 波间：属性卡 → 机关台 + 小店 ——
+function drawShop() {
+  const r = G.r;
+  ctx.fillStyle = 'rgba(12,8,6,0.9)';
+  ctx.fillRect(0, 52, FW, FH - 52);
+  if (r.cards) return drawCards();
+  const res = G.waveRes || { coins: 0 };
+  bigText(ctx, '第 ' + r.wave + ' 波守住了' + (res.coins ? '  收获 +' + res.coins : ''), FW / 2, 72, 16, '#ffd65a', LINE);
+  // 点位
+  bigText(ctx, r.lv.mode === 'defend' ? '城墙点位（先点下面的机关，再点这里）' : '车上的格子（先点下面的机关，再点这里）', FW / 2, 96, 11, '#cbb8a8', LINE);
+  const n = r.slots.length;
+  const sw = Math.min(40, (FW - 30) / n - 4);
+  r.slots.forEach((s, i) => {
+    const x = FW / 2 - (n * (sw + 4)) / 2 + i * (sw + 4);
+    G.btns.push({ id: 'slot' + i, x, y: 106, w: sw, h: sw });
+    ctx.fillStyle = '#4a3a2a';
+    ctx.strokeStyle = G.sel >= 0 ? '#ffd65a' : LINE;
+    ctx.lineWidth = 2;
+    roundRect(ctx, x, 106, sw, sw, 8);
+    ctx.fill();
+    ctx.stroke();
+    if (s) machineIcon(s.id, s.tier, x + sw / 2, 106 + sw / 2 - 2, sw * 0.36);
+  });
+  // 羁绊
+  const bc = B.bondCount(r);
+  D.ELS.forEach((e, i) => {
+    const x = 40 + i * 70;
+    ctx.fillStyle = bc[e] >= 2 ? D.EL[e].col : '#4a3e34';
+    roundRect(ctx, x - 28, 152, 56, 18, 9);
+    ctx.fill();
+    bigText(ctx, D.EL[e].name + ' ' + bc[e] + '/6', x, 161, 11, bc[e] >= 2 ? LINE : '#a89880', bc[e] >= 2 ? '#fff8e6' : LINE);
+  });
+  // 机关台
+  bigText(ctx, '机关台：点材料放进来', FW / 2, 186, 12, '#fff8e6', LINE);
+  D.ELS.forEach((e, i) => {
+    const x = 22 + i * 64;
+    const left = r.mats[e] - G.benchSel.filter((q) => q === e).length;
+    btn('mat_' + e, x, 198, 54, 36, D.EL[e].name + ' ' + left, left > 0 ? D.EL[e].dark : '#3a3028', '', { size: 15, dis: left <= 0 });
+  });
+  for (let i = 0; i < r.bench2; i++) {
+    const x = 70 + i * 58;
+    const e = G.benchSel[i];
+    G.btns.push({ id: 'bs' + i, x, y: 244, w: 48, h: 48 });
+    ctx.fillStyle = e ? D.EL[e].col : '#2a2018';
+    ctx.strokeStyle = LINE;
+    ctx.lineWidth = 2;
+    roundRect(ctx, x, 244, 48, 48, 10);
+    ctx.fill();
+    ctx.stroke();
+    if (e) bigText(ctx, D.EL[e].name, x + 24, 268, 20, LINE, '#fff8e6');
+  }
+  const pv = B.preview(r, G.benchSel);
+  const lbl = pv.state === 'ok' ? '合成 ' + pv.m.name : pv.state === 'locked' ? '配方没开：' + pv.m.name : pv.state === 'none' ? '合不出' : '放 2 个';
+  btn('combine', 70 + r.bench2 * 58, 244, FW - 86 - r.bench2 * 58, 48, lbl, pv.state === 'ok' ? '#3f8a3a' : '#4a3e34', pv.state === 'ok' ? pv.m.tip.split(' / ')[r.lv.mode === 'defend' ? 0 : 1] : '', { size: 14, dis: pv.state !== 'ok' });
+  // 做好的机关
+  bigText(ctx, '做好的机关（点一下选中）', FW / 2, 306, 11, '#cbb8a8', LINE);
+  r.bench.forEach((m, i) => {
+    const x = 24 + i * 46;
+    if (x > FW - 70) return;
+    G.btns.push({ id: 'tray' + i, x: x - 18, y: 318, w: 40, h: 40 });
+    machineIcon(m.id, m.tier, x + 2, 336, 15, G.sel === i);
+  });
+  if (G.sel >= 0) btn('sell', FW - 62, 318, 52, 32, '拆掉', '#6b3a2a', '', { size: 13 });
+  // 小店
+  bigText(ctx, '小 店', 40, 382, 15, '#ffd65a', LINE);
+  btn('refresh', FW - 118, 368, 108, 28, '刷新 ' + B.refreshCost(r), '#5a4a3a', '', { size: 13 });
+  r.shop.forEach((o, i) => {
+    const x = 12 + (i % 2) * 172;
+    const y = 404 + Math.floor(i / 2) * 104;
+    drawOffer(o, i, x, y, 164, 96);
+  });
+  btn('nextWave', 60, 628, FW - 120, 60, r.lv.mode === 'defend' ? '下一波' : '继续冲', '#c8402c', '', { size: 24 });
+}
+
+function drawOffer(o, i, x, y, w, h) {
+  const r = G.r;
+  ctx.fillStyle = o.sold ? '#2a2018' : '#3a2a1e';
+  ctx.strokeStyle = r.locked[i] ? '#ffd65a' : '#9a6a22';
+  ctx.lineWidth = 2;
+  roundRect(ctx, x, y, w, h, 10);
+  ctx.fill();
+  ctx.stroke();
+  if (o.sold) {
+    bigText(ctx, '已买', x + w / 2, y + h / 2, 16, '#8a7a66', LINE);
+    return;
+  }
+  let name;
+  let desc;
+  if (o.kind === 'item') {
+    const it = D.IT[o.id];
+    name = it.name + '（' + it.tier + ' 阶）';
+    desc = it.desc || Object.keys(it.st).map((k) => D.STATS[k].name + (it.st[k] > 0 ? ' +' : ' ') + it.st[k] + D.STATS[k].unit).join('，');
+  } else if (o.kind === 'machine') {
+    name = '机关：' + D.M[o.id].name;
+    desc = D.M[o.id].tip.split(' / ')[r.lv.mode === 'defend' ? 0 : 1];
+    machineIcon(o.id, 1, x + w - 18, y + 18, 11);
+  } else {
+    name = D.EL[o.id].name + ' × ' + o.n;
+    desc = '材料';
+  }
+  bigText(ctx, name, x + 8, y + 18, 13, '#fff8e6', LINE, 'left');
+  wrap(desc, x + 8, y + 40, w - 16, 11);
+  G.btns.push({ id: 'buy' + i, x, y, w: w - 40, h });
+  const can = r.coins >= o.price;
+  btn('lock' + i, x + w - 38, y + h - 30, 32, 24, r.locked[i] ? '锁' : '开', '#4a3a2a', '', { size: 11 });
+  bigText(ctx, o.price + ' 铜钱', x + 8, y + h - 16, 13, can ? '#ffd65a' : '#a06a5a', LINE, 'left');
+}
+function wrap(text, x, y, maxW, size) {
+  ctx.font = '900 ' + size + 'px "PingFang SC", "Heiti SC", sans-serif';
+  let line = '';
+  let yy = y;
+  for (const c of text) {
+    if (ctx.measureText(line + c).width > maxW) {
+      bigText(ctx, line, x, yy, size, '#ffe9c4', LINE, 'left');
+      line = c;
+      yy += size + 5;
+    } else line += c;
+  }
+  if (line) bigText(ctx, line, x, yy, size, '#ffe9c4', LINE, 'left');
+}
+function drawCards() {
+  const r = G.r;
+  bigText(ctx, '升级了！挑一个属性', FW / 2, 120, 22, '#ffd65a', LINE);
+  r.cards.forEach((c, i) => {
+    const y = 160 + i * 112;
+    const st = D.STATS[c.k];
+    const el = D.EL[st.el];
+    ctx.fillStyle = '#3a2a1e';
+    ctx.strokeStyle = el.col;
+    ctx.lineWidth = 3;
+    roundRect(ctx, 30, y, FW - 60, 96, 14);
+    ctx.fill();
+    ctx.stroke();
+    G.btns.push({ id: 'card' + i, x: 30, y, w: FW - 60, h: 96 });
+    ctx.fillStyle = el.col;
+    ctx.beginPath();
+    ctx.arc(76, y + 48, 26, 0, Math.PI * 2);
+    ctx.fill();
+    bigText(ctx, el.name, 76, y + 48, 24, LINE, '#fff8e6');
+    bigText(ctx, st.name + ' +' + c.v + st.unit, 120, y + 38, 22, '#fff8e6', LINE, 'left');
+    bigText(ctx, ['一', '二', '三', '四'][c.tier] + ' 阶', 120, y + 66, 13, '#ffd65a', LINE, 'left');
+  });
+}
+
+function drawResult() {
+  const g = G.result;
+  ctx.fillStyle = 'rgba(12,8,6,0.88)';
+  ctx.fillRect(0, 0, FW, FH);
+  bigText(ctx, g.win ? (G.r.lv.mode === 'defend' ? '守住了！' : '城门破了！') : G.r.lv.mode === 'defend' ? '城墙破了' : g.left ? '差 ' + g.left + ' 点就撞开了' : '车撞烂了', FW / 2, 180, 34, g.win ? '#ffd65a' : '#ff8a5a', LINE);
+  bigText(ctx, '墨晶 +' + g.mojing + (g.pages ? '   配方残页 +' + g.pages : ''), FW / 2, 240, 17, '#fff8e6', LINE);
+  if (g.chars.length) bigText(ctx, '神机字块：' + g.chars.join(' '), FW / 2, 272, 17, '#9fe8ff', LINE);
+  const sj = D.SHENJI[0];
+  bigText(ctx, '墨斗：墨 ' + (meta.chars['墨'] || 0) + '/' + sj.need + '  斗 ' + (meta.chars['斗'] || 0) + '/' + sj.need, FW / 2, 300, 13, '#cbb8a8', LINE);
+  if (g.newShenji) bigText(ctx, '凑齐神机「墨斗」！开局送一件机关', FW / 2, 330, 16, '#ffd65a', LINE);
+  btn('again', 60, 380, FW - 120, 64, g.win ? '再打一次' : '再来！', '#c8402c');
+  btn('toMap', 60, 460, FW - 120, 56, '回地图', '#3f6a5a');
+  btn('meta', 60, 530, FW - 120, 50, '工坊（花墨晶变强）', '#8a5a1e', '', { size: 16 });
+}
+
+// —— 地图 ——
+const NODE_POS = [[180, 640], [96, 580], [190, 520], [270, 455], [170, 395], [80, 330], [175, 265], [265, 200], [80, 140], [280, 120]];
+function drawMap() {
+  drawBg(0.45);
+  ctx.fillStyle = 'rgba(20,14,10,0.8)';
+  ctx.fillRect(0, 0, FW, 64);
+  bigText(ctx, '墨守 · 边城', 14, 22, 20, '#ffd65a', LINE, 'left');
+  bigText(ctx, '墨晶 ' + meta.mojing + '   残页 ' + meta.pages, 14, 46, 12, '#fff8e6', LINE, 'left');
+  btn('meta', FW - 92, 12, 80, 40, '工坊', '#8a5a1e');
+  // 连线
+  ctx.strokeStyle = 'rgba(255,214,90,0.5)';
+  ctx.lineWidth = 4;
+  ctx.setLineDash([6, 8]);
+  ctx.beginPath();
+  NODE_POS.slice(0, 8).forEach((p, i) => (i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])));
+  ctx.stroke();
+  ctx.setLineDash([]);
+  D.LEVELS.forEach((lv, i) => {
+    const [x, y] = NODE_POS[i];
+    const open = unlocked(i);
+    const done = !!meta.cleared[lv.id];
+    const R = lv.boss ? 26 : lv.challenge ? 20 : 22;
+    G.btns.push({ id: 'node' + i, x: x - R, y: y - R, w: R * 2, h: R * 2 });
+    ctx.fillStyle = !open ? '#4a3e34' : lv.mode === 'defend' ? '#3f6a5a' : '#a0402c';
+    ctx.strokeStyle = done ? '#ffd65a' : LINE;
+    ctx.lineWidth = done ? 4 : 2.5;
+    ctx.beginPath();
+    ctx.arc(x, y, R, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    bigText(ctx, lv.challenge ? '挑战' : lv.id.slice(2), x, y - 3, lv.challenge ? 12 : 16, open ? '#fff8e6' : '#8a7a66', LINE);
+    bigText(ctx, lv.mode === 'defend' ? '守' : '攻', x, y + 12, 10, '#ffe9b0', LINE);
+    if (lv.boss) bigText(ctx, 'Boss', x, y - R - 8, 11, '#ff8a5a', LINE);
+  });
+  btn('old', 10, FH - 44, 120, 34, '0.5 旧玩法', '#4a3a2a', '', { size: 12 });
+}
+function drawBrief() {
+  const lv = D.LEVELS[G.lvIdx];
+  ctx.fillStyle = 'rgba(10,6,4,0.75)';
+  ctx.fillRect(0, 0, FW, FH);
+  ctx.fillStyle = '#2b1f16';
+  ctx.strokeStyle = '#9a6a22';
+  ctx.lineWidth = 3;
+  roundRect(ctx, 20, 120, FW - 40, 480, 16);
+  ctx.fill();
+  ctx.stroke();
+  bigText(ctx, lv.id + (lv.boss ? ' · Boss' : '') + (lv.challenge ? ' · 挑战' : ''), FW / 2, 152, 20, '#ffd65a', LINE);
+  wrap(lv.story, 40, 186, FW - 80, 15);
+  const mode = lv.mode === 'defend' ? '守城：机关摆在城墙上，阿铸在城下射箭' : (lv.car === 'dragon' ? '进攻：开机关龙（' + metaNow().dragonLen + ' 格）' : '进攻：开小工程车（' + metaNow().cartSlots + ' 格）') + '，冲到城门';
+  wrap(mode, 40, 240, FW - 80, 13);
+  bigText(ctx, '选机关师', FW / 2, 296, 15, '#fff8e6', LINE);
+  D.BUILDERS.forEach((b, i) => {
+    const y = 312 + i * 72;
+    const on = meta.builder === b.id;
+    btn('bld_' + b.id, 36, y, FW - 72, 64, b.name, on ? '#6b4a1e' : '#3a2a1e', '', { on, size: 16 });
+    ctx.save();
+    wrap(b.line, 50, y + 46, FW - 100, 10);
+    ctx.restore();
+  });
+  btn('go', 60, 534, FW - 120, 54, '出 发', '#c8402c');
+  btn('back', FW - 70, 128, 44, 32, '×', '#4a3a2a', '', { size: 16 });
+}
+
+// —— 工坊（局外）——
+function drawMeta() {
+  drawBg(0.6);
+  ctx.fillStyle = 'rgba(20,14,10,0.85)';
+  ctx.fillRect(0, 0, FW, 64);
+  bigText(ctx, '工坊', 14, 24, 22, '#ffd65a', LINE, 'left');
+  bigText(ctx, '墨晶 ' + meta.mojing + '   配方残页 ' + meta.pages, 14, 48, 12, '#fff8e6', LINE, 'left');
+  btn('toMap', FW - 92, 12, 80, 40, '回地图', '#3f6a5a', '', { size: 15 });
+  const NOW = {
+    slots: () => '现在 ' + metaNow().slots + ' 个',
+    bench: () => '现在 ' + metaNow().bench + ' 格（3 格才能合三合，下一版加）',
+    wallHp: () => '现在 ' + metaNow().wallHp,
+    cartSlots: () => '现在 ' + metaNow().cartSlots + ' 格',
+    dragonLen: () => '现在 ' + metaNow().dragonLen + ' 节',
+  };
+  Object.keys(META_KEYS).forEach((k, i) => {
+    const c = metaCost(k);
+    const y = 76 + i * 54;
+    btn('up_' + k, 16, y, FW - 32, 48, D.META[k].name + (c === null ? '（满）' : '  ' + c + ' 墨晶'), c !== null && meta.mojing >= c ? '#8a5a1e' : '#4a3e34', NOW[k](), { size: 15 });
+  });
+  bigText(ctx, '配方书（每张 3 张残页）', FW / 2, 362, 15, '#ffd65a', LINE);
+  D.MACHINES.forEach((m, i) => {
+    const x = 20 + (i % 5) * 66;
+    const y = 382 + Math.floor(i / 5) * 76;
+    const own = meta.recipes.indexOf(m.id) >= 0;
+    G.btns.push({ id: 'rec_' + m.id, x, y, w: 60, h: 70 });
+    ctx.fillStyle = own ? '#3a2a1e' : '#241a12';
+    roundRect(ctx, x, y, 60, 70, 8);
+    ctx.fill();
+    machineIcon(m.id, 1, x + 30, y + 26, 15);
+    bigText(ctx, m.name, x + 30, y + 56, 11, own ? '#fff8e6' : '#7a6a56', LINE);
+    if (!own) bigText(ctx, '锁', x + 50, y + 10, 11, '#ffd65a', LINE);
+  });
+  const sj = D.SHENJI[0];
+  bigText(ctx, '神机图谱 · 墨斗：' + (meta.shenji[sj.id] ? '已凑齐（开局送一件机关）' : '墨 ' + (meta.chars['墨'] || 0) + '/' + sj.need + '  斗 ' + (meta.chars['斗'] || 0) + '/' + sj.need), FW / 2, 628, 13, '#9fe8ff', LINE);
+  bigText(ctx, '（其余 11 件神机、21 个机关师、三合以上机关在后面的版本加）', FW / 2, 652, 10, '#a89880', LINE);
+}
+
+SH.register('mo', { onTouch, frame, enter: () => (last = PF.now()) });
+PF.exposeForTest('__mo', { G, meta, D, B, F, A, startLevel, press, saveMeta, scale, ox, oy, metaNow });
