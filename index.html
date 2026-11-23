@@ -5669,17 +5669,39 @@ const ITEMS = [
 const IT = {};
 ITEMS.forEach((i) => (IT[i.id] = i));
 
-// —— 机关师（第一版：默认 3 个）——
+// —— 机关师：24 个（全量设计第 9 节）；这一版能玩前 3 个，其余显示出来、标怎么解锁 ——
+// plus / minus：给玩家看的加减；st / elDmg / gift：程序真正用的
 const BUILDERS = [
-  { id: 'azhu', name: '阿铸', line: '什么都会一点', st: {} },
-  { id: 'achui', name: '铁匠阿锤', line: '偏土、偏锤：含土的机关伤害 +20%，开局送一件千斤锤', elDmg: { tu: 20, shui: -10 }, gift: 'chui' },
-  { id: 'huotou', name: '火头军', line: '偏火：含火的机关伤害 +20%，燃烧 +2，生命 −10', elDmg: { huo: 20 }, st: { burn: 2, hp: -10 } },
+  { id: 'azhu', name: '阿铸', line: '什么都会一点', good: '新手', plus: '—', minus: '—', st: {}, unlock: '默认' },
+  { id: 'achui', name: '铁匠阿锤', line: '偏土、偏锤', good: '土系机关、千斤锤', plus: '含土的机关伤害 +20%；开局送一件千斤锤', minus: '含水的机关伤害 −10%', elDmg: { tu: 20, shui: -10 }, gift: 'chui', unlock: '默认' },
+  { id: 'huotou', name: '火头军', line: '偏火', good: '火系机关、燃烧', plus: '含火的机关伤害 +20%；燃烧 +2', minus: '生命 −10', elDmg: { huo: 20 }, st: { burn: 2, hp: -10 }, unlock: '默认' },
+  { id: 'xiaomo', name: '箭手小墨', line: '偏金、远程', good: '连弩、火铳', plus: '含金的机关伤害 +20%；射程 +30', minus: '护甲 −2', locked: true, unlock: '通关边城 1-4' },
+  { id: 'yaotong', name: '药童', line: '慢慢磨', good: '回春藤、回复', plus: '回复 +5；开局送一件回春藤', minus: '伤害 −10%', locked: true, unlock: '通关边城 1-8' },
+  { id: 'bingniang', name: '冰娘', line: '冻住再打', good: '寒气筒、冰冻', plus: '冰冻 +10%；冻住的敌人挨打 +20%', minus: '燃烧 −50%', locked: true, unlock: '通关古墓 2-4' },
+  { id: 'mogong', name: '墨工', line: '不打了，布阵', good: '换打法：布阵', plus: '阿铸不射箭；每打碎 5 节，城墙 / 车上多一座小连弩（最多 6 座）', minus: '机关台少 1 格', locked: true, change: true, unlock: '通关古墓 2-8' },
+  { id: 'tiebi', name: '铁壁', line: '挨打就是输出', good: '换打法：挨打反击', plus: '生命 +50；城墙 / 车每掉 10% 血，所有机关齐射一轮', minus: '伤害 −30%', locked: true, change: true, unlock: '通关地宫 3-4' },
+  { id: 'huanbing', name: '缓兵', line: '别打，拖时间', good: '换打法：拖时间', plus: '龙走到门口不扣血、只偷材料；每波结束每活着一节给 3 铜钱', minus: '机关伤害 −100%', locked: true, change: true, unlock: '通关地宫 3-8' },
+  { id: 'gunu', name: '孤弩', line: '押宝一件', good: '换打法：只带一件', plus: '只能放 1 件机关，这件伤害 +100%、攻速 +200%', minus: '只能放 1 件', locked: true, change: true, unlock: '通关水寨 4-4' },
+  { id: 'zajia', name: '杂家', line: '越多越好', good: '换打法：堆数量', plus: '能放的机关数 × 2', minus: '每件伤害 −40%', locked: true, change: true, unlock: '通关水寨 4-8' },
+  { id: 'shangren', name: '商人', line: '会赚钱', good: '小店', plus: '商店便宜 30%、多 1 格', minus: '收获 −5', locked: true, unlock: '通关机关城 5-4' },
+  { id: 'dutu', name: '赌徒', line: '每波碰运气', good: '换打法：赌', plus: '每波开打时，随机一件机关升一阶', minus: '也可能降一阶（各一半）', locked: true, change: true, unlock: '通关机关城 5-8' },
+  { id: 'mujiang', name: '木匠', line: '多了要护着的东西', good: '换打法：护树', plus: '城墙边长 4 棵树，树活着每波给材料、补血', minus: '龙会先去啃树', locked: true, change: true, unlock: '通关公输城 6-4' },
+  { id: 'leigong', name: '雷公', line: '什么都带电', good: '雷链、连锁', plus: '所有伤害 20% 机会变成一道雷链', minus: '不能合含木的机关', locked: true, change: true, unlock: '打败公输盘' },
+  { id: 'paoshou', name: '炮手', line: '炸得开', good: '霹雳罐、爆炸', plus: '爆炸范围 +40%；霹雳类冷却 −20%', minus: '攻速 −15%', locked: true, unlock: '围城 1 档通关任一地方' },
+  { id: 'taotie', name: '饕餮', line: '捡东西就是输出', good: '换打法：捡材料炸', plus: '捡材料时 30% 机会在原地炸开', minus: '收获 −30%', locked: true, change: true, unlock: '围城 1 档通关 3 个地方' },
+  { id: 'shoucai', name: '守财奴', line: '存钱就是输出', good: '换打法：存钱', plus: '身上每存 50 铜钱，伤害 +5%', minus: '商店贵 20%', locked: true, change: true, unlock: '围城 2 档通关任一地方' },
+  { id: 'fengzi', name: '疯子', line: '拼命', good: '暴击', plus: '暴击 +20%、暴伤 +50%', minus: '每次暴击扣自己 1 血', locked: true, change: true, unlock: '围城 2 档通关 3 个地方' },
+  { id: 'laobing', name: '老兵', line: '越打越强', good: '换打法：长局', plus: '每过一波，所有属性 +2%', minus: '第一波伤害 −30%', locked: true, change: true, unlock: '围城 3 档通关任一地方' },
+  { id: 'qiaoshou', name: '巧手', line: '合得多', good: '机关台', plus: '合机关时 20% 机会多合出一件', minus: '生命 −15', locked: true, unlock: '围城 3 档通关 3 个地方' },
+  { id: 'pantu', name: '公输叛徒', line: '用敌人的东西', good: '换打法：万能材料', plus: '敌人掉的「公输零件」能当万能材料用', minus: '生命 −30%', locked: true, change: true, unlock: '围城 4 档通关任一地方' },
+  { id: 'mozi', name: '墨子', line: '五行大师', good: '羁绊', plus: '五行羁绊从 1 件起算（门槛全降 1）', minus: '机关台少 1 格', locked: true, change: true, unlock: '围城 5 档打败公输盘' },
+  { id: 'gongshu', name: '公输盘', line: '对手也能玩', good: '进攻', plus: '进攻：车格 × 2；守城：敌人走得慢 20%', minus: '守城时城墙点位少 2 个', locked: true, change: true, unlock: '围城 6 档打败公输盘' },
 ];
 
 // —— 边城 8 关 + 2 挑战 ——
 // mode：defend / attack；car：small / dragon；waves：几波；boss：铁头龙 / 巨弩城楼
 const LEVELS = [
-  { id: '1-1', story: '公输家的机关长龙来攻边城', mode: 'defend', waves: 3, hp: 1, len: 14, teach: '左右拖，阿铸射箭；波末用材料合机关，摆上城墙' },
+  { id: '1-1', story: '公输家的机关长龙来攻边城', mode: 'defend', waves: 3, hp: 1, len: 14, teach: '阿铸自动射箭；波末点材料合机关，合好自动摆上城墙' },
   { id: '1-2', story: '长龙退了，城外留下一串车辙', mode: 'defend', waves: 3, hp: 1.2, len: 16, teach: '两件一样的机关叠在一起，升一阶' },
   { id: '1-3', story: '顺着车辙找到公输家的前哨', mode: 'attack', car: 'small', waves: 3, num: 5, teach: '开小工程车往上冲，车上的机关自动打砖' },
   { id: '1-4', story: '公输家推来铁头龙撞城门', mode: 'defend', waves: 3, hp: 1.5, len: 18, boss: 'tietou', types: { shield: 0.12, powder: 0.08 } },
@@ -6332,12 +6354,17 @@ function press(id) {
     const i = +id.slice(4);
     if (!unlocked(i)) return;
     G.lvIdx = i;
+    G.bldView = null;
     G.scr = 'brief';
   } else if (id === 'go') startLevel(G.lvIdx);
   else if (id === 'back') G.scr = 'map';
   else if (id.startsWith('bld_')) {
-    meta.builder = id.slice(4);
-    saveMeta();
+    const b = D.BUILDERS.find((x) => x.id === id.slice(4));
+    G.bldView = b.id;
+    if (!b.locked) {
+      meta.builder = b.id;
+      saveMeta();
+    }
   } else if (id === 'meta') G.scr = 'meta';
   else if (id === 'old') SH.go('menu');
   else if (id.startsWith('card')) {
@@ -6353,9 +6380,10 @@ function press(id) {
     const mc = B.combine(r, G.benchSel);
     if (mc) {
       G.benchSel = [];
-      G.sel = r.bench.length - 1;
+      G.sel = -1;
       snd('upgrade', 0, 0.6);
-      pop(D.M[mc.id].name + (mc.tier > 1 ? ' · 鲁班尺高一阶！' : ''), FW / 2, 268, '#ffd65a', 18);
+      const where = autoPlace(r);
+      pop(D.M[mc.id].name + (mc.tier > 1 ? ' · 鲁班尺高一阶！' : '') + (where ? ' → ' + where : ''), FW / 2, 268, '#ffd65a', 16);
     }
   } else if (id.startsWith('tray')) {
     const i = +id.slice(4);
@@ -6383,6 +6411,7 @@ function press(id) {
   } else if (id === 'refresh') {
     if (!B.refresh(r)) snd('alarm', 200, 0.3);
   } else if (id === 'nextWave') {
+    autoPlace(r);
     G.scr = 'play';
     G.benchSel = [];
     G.sel = -1;
@@ -6421,6 +6450,20 @@ function buyMeta(k) {
   meta[META_KEYS[k]]++;
   saveMeta();
   snd('upgrade', 0, 0.6);
+}
+
+// 机关台上做好的机关，自动摆上城墙 / 车：有一样的就叠上去升阶，没有就放空位
+function autoPlace(r) {
+  let msg = '';
+  for (let bi = r.bench.length - 1; bi >= 0; bi--) {
+    const mc = r.bench[bi];
+    let si = r.slots.findIndex((x) => x && x.id === mc.id && x.tier === mc.tier && x.tier < 4);
+    if (si < 0) si = r.slots.findIndex((x) => !x);
+    if (si < 0) continue;
+    const res = B.place(r, bi, si);
+    if (res && !res.blocked) msg = res.res === 'merge' ? '叠成 ' + res.slot.tier + ' 阶' : '摆上第 ' + (si + 1) + ' 格';
+  }
+  return msg;
 }
 
 // —— 特效 ——
@@ -6614,7 +6657,7 @@ function frame() {
     let n = 0;
     while (acc >= 1 / 60 && n++ < 40 && G.scr === 'play') {
       acc -= 1 / 60;
-      if (G.bot) G.st.targetX = S().botX(G.st);
+      if (G.bot || (G.r.lv.mode === 'defend' && !G.drag)) G.st.targetX = S().botX(G.st);
       S().step(G.st, 1 / 60);
       handleEvents();
     }
@@ -6635,12 +6678,6 @@ function botShop() {
     const m = D.MACHINES.find((mm) => r.recipes.indexOf(mm.id) >= 0 && mm.els.every((e) => r.mats[e] >= mm.els.filter((x) => x === e).length));
     if (!m) break;
     B.combine(r, m.els);
-  }
-  for (let bi = r.bench.length - 1; bi >= 0; bi--) {
-    const mc = r.bench[bi];
-    let si = r.slots.findIndex((s) => s && s.id === mc.id && s.tier === mc.tier && s.tier < 4);
-    if (si < 0) si = r.slots.findIndex((s) => !s);
-    if (si >= 0) B.place(r, bi, si);
   }
   press('nextWave');
 }
@@ -7129,7 +7166,7 @@ function drawShop() {
   const res = G.waveRes || { coins: 0 };
   bigText(ctx, '第 ' + r.wave + ' 波守住了' + (res.coins ? '  收获 +' + res.coins : ''), FW / 2, 72, 16, '#ffd65a', LINE);
   // 点位
-  bigText(ctx, r.lv.mode === 'defend' ? '城墙点位（先点下面的机关，再点这里）' : '车上的格子（先点下面的机关，再点这里）', FW / 2, 96, 11, '#cbb8a8', LINE);
+  bigText(ctx, r.lv.mode === 'defend' ? '城墙点位（合好的机关会自动摆上来）' : '车上的格子（合好的机关会自动装上来）', FW / 2, 96, 11, '#cbb8a8', LINE);
   const n = r.slots.length;
   const sw = Math.min(40, (FW - 30) / n - 4);
   r.slots.forEach((s, i) => {
@@ -7175,7 +7212,7 @@ function drawShop() {
   const lbl = pv.state === 'ok' ? '合成 ' + pv.m.name : pv.state === 'locked' ? '配方没开：' + pv.m.name : pv.state === 'none' ? '合不出' : '放 2 个';
   btn('combine', 70 + r.bench2 * 58, 244, FW - 86 - r.bench2 * 58, 48, lbl, pv.state === 'ok' ? '#3f8a3a' : '#4a3e34', pv.state === 'ok' ? pv.m.tip.split(' / ')[r.lv.mode === 'defend' ? 0 : 1] : '', { size: 14, dis: pv.state !== 'ok' });
   // 做好的机关
-  bigText(ctx, '做好的机关（点一下选中）', FW / 2, 306, 11, '#cbb8a8', LINE);
+  bigText(ctx, r.bench.length ? '放不下的机关（点一下选中，再点上面的格子换上去）' : '想换位置：点这里的机关，再点上面的格子', FW / 2, 306, 11, '#cbb8a8', LINE);
   r.bench.forEach((m, i) => {
     const x = 24 + i * 46;
     if (x > FW - 70) return;
@@ -7317,29 +7354,50 @@ function drawMap() {
 }
 function drawBrief() {
   const lv = D.LEVELS[G.lvIdx];
-  ctx.fillStyle = 'rgba(10,6,4,0.75)';
+  ctx.fillStyle = 'rgba(10,6,4,0.8)';
   ctx.fillRect(0, 0, FW, FH);
   ctx.fillStyle = '#2b1f16';
   ctx.strokeStyle = '#9a6a22';
   ctx.lineWidth = 3;
-  roundRect(ctx, 20, 120, FW - 40, 480, 16);
+  roundRect(ctx, 12, 70, FW - 24, 630, 16);
   ctx.fill();
   ctx.stroke();
-  bigText(ctx, lv.id + (lv.boss ? ' · Boss' : '') + (lv.challenge ? ' · 挑战' : ''), FW / 2, 152, 20, '#ffd65a', LINE);
-  wrap(lv.story, 40, 186, FW - 80, 15);
-  const mode = lv.mode === 'defend' ? '守城：机关摆在城墙上，阿铸在城下射箭' : (lv.car === 'dragon' ? '进攻：开机关龙（' + metaNow().dragonLen + ' 格）' : '进攻：开小工程车（' + metaNow().cartSlots + ' 格）') + '，冲到城门';
-  wrap(mode, 40, 240, FW - 80, 13);
-  bigText(ctx, '选机关师', FW / 2, 296, 15, '#fff8e6', LINE);
+  bigText(ctx, lv.id + (lv.boss ? ' · Boss' : '') + (lv.challenge ? ' · 挑战' : ''), FW / 2, 98, 20, '#ffd65a', LINE);
+  wrap(lv.story, 30, 128, FW - 60, 14);
+  const mode = lv.mode === 'defend' ? '守城：阿铸自动射箭，你只管波间合机关，机关会摆上城墙' : (lv.car === 'dragon' ? '进攻：开机关龙（' + metaNow().dragonLen + ' 格）' : '进攻：开小工程车（' + metaNow().cartSlots + ' 格）') + '，左右拖着躲砖、冲到城门';
+  wrap(mode, 30, 170, FW - 60, 12);
+  const n = D.BUILDERS.filter((b) => !b.locked).length;
+  bigText(ctx, '机关师 · 已解锁 ' + n + ' / ' + D.BUILDERS.length, FW / 2, 214, 14, '#fff8e6', LINE);
+  // 24 个格子：6 列 × 4 行
   D.BUILDERS.forEach((b, i) => {
-    const y = 312 + i * 72;
+    const x = 26 + (i % 6) * 52;
+    const y = 228 + Math.floor(i / 6) * 58;
     const on = meta.builder === b.id;
-    btn('bld_' + b.id, 36, y, FW - 72, 64, b.name, on ? '#6b4a1e' : '#3a2a1e', '', { on, size: 16 });
-    ctx.save();
-    wrap(b.line, 50, y + 46, FW - 100, 10);
-    ctx.restore();
+    const view = (G.bldView || meta.builder) === b.id;
+    G.btns.push({ id: 'bld_' + b.id, x, y, w: 46, h: 52 });
+    ctx.fillStyle = b.locked ? '#241a12' : on ? '#6b4a1e' : '#3a2a1e';
+    ctx.strokeStyle = view ? '#ffd65a' : b.change ? '#7a4aa0' : LINE;
+    ctx.lineWidth = view ? 3 : 1.5;
+    roundRect(ctx, x, y, 46, 52, 8);
+    ctx.fill();
+    ctx.stroke();
+    bigText(ctx, b.locked ? '？' : b.name[0], x + 23, y + 20, 20, b.locked ? '#6a5a48' : '#fff8e6', LINE);
+    bigText(ctx, b.name.length > 3 ? b.name.slice(0, 3) : b.name, x + 23, y + 42, 10, b.locked ? '#7a6a56' : '#ffe9b0', LINE);
+    if (b.locked) bigText(ctx, '锁', x + 38, y + 8, 9, '#ffd65a', LINE);
   });
-  btn('go', 60, 534, FW - 120, 54, '出 发', '#c8402c');
-  btn('back', FW - 70, 128, 44, 32, '×', '#4a3a2a', '', { size: 16 });
+  // 详情
+  const b = D.BUILDERS.find((x) => x.id === (G.bldView || meta.builder));
+  const dy = 466;
+  ctx.fillStyle = '#1f160f';
+  roundRect(ctx, 24, dy, FW - 48, 150, 10);
+  ctx.fill();
+  bigText(ctx, b.name + (b.change ? '（换打法）' : ''), 36, dy + 18, 16, b.locked ? '#a89880' : '#ffd65a', LINE, 'left');
+  bigText(ctx, b.locked ? '未解锁：' + b.unlock : meta.builder === b.id ? '已选' : '点一下就选', FW - 36, dy + 18, 11, b.locked ? '#ff9a6a' : '#9dff7a', LINE, 'right');
+  wrap('擅长：' + b.good + ' · ' + b.line, 36, dy + 44, FW - 72, 12);
+  wrap('加：' + b.plus, 36, dy + 74, FW - 72, 12);
+  wrap('减：' + b.minus, 36, dy + 116, FW - 72, 12);
+  btn('go', 50, 630, FW - 100, 56, '出 发 · ' + D.BUILDERS.find((x) => x.id === meta.builder).name, '#c8402c', '', { size: 20 });
+  btn('back', FW - 62, 78, 40, 30, '×', '#4a3a2a', '', { size: 16 });
 }
 
 // —— 工坊（局外）——

@@ -106,17 +106,39 @@ const ITEMS = [
 const IT = {};
 ITEMS.forEach((i) => (IT[i.id] = i));
 
-// —— 机关师（第一版：默认 3 个）——
+// —— 机关师：24 个（全量设计第 9 节）；这一版能玩前 3 个，其余显示出来、标怎么解锁 ——
+// plus / minus：给玩家看的加减；st / elDmg / gift：程序真正用的
 const BUILDERS = [
-  { id: 'azhu', name: '阿铸', line: '什么都会一点', st: {} },
-  { id: 'achui', name: '铁匠阿锤', line: '偏土、偏锤：含土的机关伤害 +20%，开局送一件千斤锤', elDmg: { tu: 20, shui: -10 }, gift: 'chui' },
-  { id: 'huotou', name: '火头军', line: '偏火：含火的机关伤害 +20%，燃烧 +2，生命 −10', elDmg: { huo: 20 }, st: { burn: 2, hp: -10 } },
+  { id: 'azhu', name: '阿铸', line: '什么都会一点', good: '新手', plus: '—', minus: '—', st: {}, unlock: '默认' },
+  { id: 'achui', name: '铁匠阿锤', line: '偏土、偏锤', good: '土系机关、千斤锤', plus: '含土的机关伤害 +20%；开局送一件千斤锤', minus: '含水的机关伤害 −10%', elDmg: { tu: 20, shui: -10 }, gift: 'chui', unlock: '默认' },
+  { id: 'huotou', name: '火头军', line: '偏火', good: '火系机关、燃烧', plus: '含火的机关伤害 +20%；燃烧 +2', minus: '生命 −10', elDmg: { huo: 20 }, st: { burn: 2, hp: -10 }, unlock: '默认' },
+  { id: 'xiaomo', name: '箭手小墨', line: '偏金、远程', good: '连弩、火铳', plus: '含金的机关伤害 +20%；射程 +30', minus: '护甲 −2', locked: true, unlock: '通关边城 1-4' },
+  { id: 'yaotong', name: '药童', line: '慢慢磨', good: '回春藤、回复', plus: '回复 +5；开局送一件回春藤', minus: '伤害 −10%', locked: true, unlock: '通关边城 1-8' },
+  { id: 'bingniang', name: '冰娘', line: '冻住再打', good: '寒气筒、冰冻', plus: '冰冻 +10%；冻住的敌人挨打 +20%', minus: '燃烧 −50%', locked: true, unlock: '通关古墓 2-4' },
+  { id: 'mogong', name: '墨工', line: '不打了，布阵', good: '换打法：布阵', plus: '阿铸不射箭；每打碎 5 节，城墙 / 车上多一座小连弩（最多 6 座）', minus: '机关台少 1 格', locked: true, change: true, unlock: '通关古墓 2-8' },
+  { id: 'tiebi', name: '铁壁', line: '挨打就是输出', good: '换打法：挨打反击', plus: '生命 +50；城墙 / 车每掉 10% 血，所有机关齐射一轮', minus: '伤害 −30%', locked: true, change: true, unlock: '通关地宫 3-4' },
+  { id: 'huanbing', name: '缓兵', line: '别打，拖时间', good: '换打法：拖时间', plus: '龙走到门口不扣血、只偷材料；每波结束每活着一节给 3 铜钱', minus: '机关伤害 −100%', locked: true, change: true, unlock: '通关地宫 3-8' },
+  { id: 'gunu', name: '孤弩', line: '押宝一件', good: '换打法：只带一件', plus: '只能放 1 件机关，这件伤害 +100%、攻速 +200%', minus: '只能放 1 件', locked: true, change: true, unlock: '通关水寨 4-4' },
+  { id: 'zajia', name: '杂家', line: '越多越好', good: '换打法：堆数量', plus: '能放的机关数 × 2', minus: '每件伤害 −40%', locked: true, change: true, unlock: '通关水寨 4-8' },
+  { id: 'shangren', name: '商人', line: '会赚钱', good: '小店', plus: '商店便宜 30%、多 1 格', minus: '收获 −5', locked: true, unlock: '通关机关城 5-4' },
+  { id: 'dutu', name: '赌徒', line: '每波碰运气', good: '换打法：赌', plus: '每波开打时，随机一件机关升一阶', minus: '也可能降一阶（各一半）', locked: true, change: true, unlock: '通关机关城 5-8' },
+  { id: 'mujiang', name: '木匠', line: '多了要护着的东西', good: '换打法：护树', plus: '城墙边长 4 棵树，树活着每波给材料、补血', minus: '龙会先去啃树', locked: true, change: true, unlock: '通关公输城 6-4' },
+  { id: 'leigong', name: '雷公', line: '什么都带电', good: '雷链、连锁', plus: '所有伤害 20% 机会变成一道雷链', minus: '不能合含木的机关', locked: true, change: true, unlock: '打败公输盘' },
+  { id: 'paoshou', name: '炮手', line: '炸得开', good: '霹雳罐、爆炸', plus: '爆炸范围 +40%；霹雳类冷却 −20%', minus: '攻速 −15%', locked: true, unlock: '围城 1 档通关任一地方' },
+  { id: 'taotie', name: '饕餮', line: '捡东西就是输出', good: '换打法：捡材料炸', plus: '捡材料时 30% 机会在原地炸开', minus: '收获 −30%', locked: true, change: true, unlock: '围城 1 档通关 3 个地方' },
+  { id: 'shoucai', name: '守财奴', line: '存钱就是输出', good: '换打法：存钱', plus: '身上每存 50 铜钱，伤害 +5%', minus: '商店贵 20%', locked: true, change: true, unlock: '围城 2 档通关任一地方' },
+  { id: 'fengzi', name: '疯子', line: '拼命', good: '暴击', plus: '暴击 +20%、暴伤 +50%', minus: '每次暴击扣自己 1 血', locked: true, change: true, unlock: '围城 2 档通关 3 个地方' },
+  { id: 'laobing', name: '老兵', line: '越打越强', good: '换打法：长局', plus: '每过一波，所有属性 +2%', minus: '第一波伤害 −30%', locked: true, change: true, unlock: '围城 3 档通关任一地方' },
+  { id: 'qiaoshou', name: '巧手', line: '合得多', good: '机关台', plus: '合机关时 20% 机会多合出一件', minus: '生命 −15', locked: true, unlock: '围城 3 档通关 3 个地方' },
+  { id: 'pantu', name: '公输叛徒', line: '用敌人的东西', good: '换打法：万能材料', plus: '敌人掉的「公输零件」能当万能材料用', minus: '生命 −30%', locked: true, change: true, unlock: '围城 4 档通关任一地方' },
+  { id: 'mozi', name: '墨子', line: '五行大师', good: '羁绊', plus: '五行羁绊从 1 件起算（门槛全降 1）', minus: '机关台少 1 格', locked: true, change: true, unlock: '围城 5 档打败公输盘' },
+  { id: 'gongshu', name: '公输盘', line: '对手也能玩', good: '进攻', plus: '进攻：车格 × 2；守城：敌人走得慢 20%', minus: '守城时城墙点位少 2 个', locked: true, change: true, unlock: '围城 6 档打败公输盘' },
 ];
 
 // —— 边城 8 关 + 2 挑战 ——
 // mode：defend / attack；car：small / dragon；waves：几波；boss：铁头龙 / 巨弩城楼
 const LEVELS = [
-  { id: '1-1', story: '公输家的机关长龙来攻边城', mode: 'defend', waves: 3, hp: 1, len: 14, teach: '左右拖，阿铸射箭；波末用材料合机关，摆上城墙' },
+  { id: '1-1', story: '公输家的机关长龙来攻边城', mode: 'defend', waves: 3, hp: 1, len: 14, teach: '阿铸自动射箭；波末点材料合机关，合好自动摆上城墙' },
   { id: '1-2', story: '长龙退了，城外留下一串车辙', mode: 'defend', waves: 3, hp: 1.2, len: 16, teach: '两件一样的机关叠在一起，升一阶' },
   { id: '1-3', story: '顺着车辙找到公输家的前哨', mode: 'attack', car: 'small', waves: 3, num: 5, teach: '开小工程车往上冲，车上的机关自动打砖' },
   { id: '1-4', story: '公输家推来铁头龙撞城门', mode: 'defend', waves: 3, hp: 1.5, len: 18, boss: 'tietou', types: { shield: 0.12, powder: 0.08 } },
