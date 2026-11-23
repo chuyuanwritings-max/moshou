@@ -136,11 +136,12 @@ const fs = require('fs');
   await g(() => { const st = __ram.G.st; const id = st.carOrder[0]; st.cars[id] = 2; st.cards = [id]; st.mode = 'cards'; __ram.G.cardsAt = 0; });
   await page.waitForTimeout(300);
   { const r1 = await g(() => __ram.G.cardRects[0]); const [x, y] = scr(r1.x + r1.w / 2, r1.y + r1.h / 2); await page.mouse.click(x, y); }
-  await page.waitForTimeout(1300);
+  await page.waitForTimeout(500);
+  check(await g(() => !!__ram.G.cs), '同一节拿到 3 级：放进化过场（举锤、落锤、白闪、光环、亮相）');
+  await page.waitForTimeout(800);
   await snap('10a_进化举锤');
   await page.waitForTimeout(1300);
   await snap('10_进化');
-  check(await g(() => !!__ram.G.cs), '同一节拿到 3 级：放进化过场（举锤、落锤、白闪、光环、亮相）');
   await page.waitForTimeout(1200);
   await snap('10b_进化亮相');
   await g(() => __ram.G.cs && __ram.G.cs.skip());
