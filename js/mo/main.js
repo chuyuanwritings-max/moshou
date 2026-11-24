@@ -167,21 +167,122 @@ function onTouch(type, id, px, py) {
   if (type === 'down') {
     for (let i = G.btns.length - 1; i >= 0; i--) {
       if (inR(fx, fy, G.btns[i])) {
-        press(G.btns[i].id);
+        const bid = G.btns[i].id;
+        // 手上的机关：按住就能拖
+        if (bid.startsWith('tray') && !G.tip && !G.recipesOpen) {
+          G.sel = +bid.slice(4);
+          G.dragM = { id, bi: G.sel, fx, fy, fx0: fx, fy0: fy, moved: false };
+          return;
+        }
+        // 场上的机关：按住也能拖（合、挪、换）
+        const si = bid.startsWith('spot') ? +bid.slice(4) : bid.startsWith('slot') ? +bid.slice(4) : -1;
+        if (si >= 0 && G.r && G.r.slots[si] && G.sel < 0 && !G.tip && !G.recipesOpen) {
+          G.dragM = { id, si, kind: bid.slice(0, 4), fx, fy, fx0: fx, fy0: fy, moved: false };
+          return;
+        }
+        press(bid);
         return;
       }
     }
     if (G.scr === 'play') G.sel = -1;
   } else if (type === 'move') {
+    if (G.dragM && G.dragM.id === id) {
+      G.dragM.fx = fx;
+      G.dragM.fy = fy;
+      if (Math.hypot(fx - G.dragM.fx0, fy - G.dragM.fy0) > 8) G.dragM.moved = true;
+    }
     if (G.drag && G.drag.id === id && G.scr === 'play') G.st.targetX = clamp(G.drag.x0 + (fx - G.drag.fx0) * 1.15, 14, FW - 14);
   } else if (type === 'up') {
+    if (G.dragM && G.dragM.id === id) {
+      const d = G.dragM;
+      G.dragM = null;
+      if (d.si !== undefined) {
+        // 从场上拖：合 / 挪 / 换；没拖动就当点一下（看射程）
+        const tgt = d.moved ? dropTarget(fx, fy, d.si) : null;
+        if (tgt) {
+          const to = +tgt.slice(4);
+          const res = B.moveSlot(G.r, d.si, to);
+          if (res) {
+            snd(res.res === 'merge' ? 'evolve' : 'clang', 0, 0.5);
+            if (res.res === 'merge') {
+              PF.vibrate(true);
+              const p = G.r.lv.mode === 'defend' && G.scr === 'play' ? F.slotPos(to) : { x: FW / 2, y: 120 };
+              pop('叠成 ' + res.slot.tier + ' 阶！', p.x, p.y - 26, '#ffd65a', 16);
+              sparks(p.x, p.y - 10, 12, '#ffd65a');
+            }
+            if (G.scr === 'play') G.spotView = { i: to, t: 1.6 };
+          }
+        } else if (!d.moved) press(d.kind + d.si);
+      } else if (d.moved) {
+        const tgt = dropTarget(fx, fy);
+        if (tgt && tgt.startsWith('tray')) {
+          // 手上两件同名的拖到一起：叠成高阶
+          const j = +tgt.slice(4);
+          const a = G.r.bench[d.bi];
+          const b = G.r.bench[j];
+          if (j !== d.bi && canStack(a, b)) {
+            b.tier += a.tier;
+            G.r.bench.splice(d.bi, 1);
+            snd('evolve', 0, 0.5);
+            PF.vibrate(true);
+            pop('叠成 ' + b.tier + ' 阶！', FW / 2, G.scr === 'play' ? 600 : 560, '#ffd65a', 16);
+          }
+          G.sel = -1;
+        } else if (tgt) press(tgt);
+        else G.sel = -1;
+      }
+    }
     if (G.drag && G.drag.id === id) G.drag = null;
   }
+}
+
+// 松手的地方有没有点位 / 车格（放宽一点，手指好放）
+function dropTarget(fx, fy, skip) {
+  let best = null;
+  let bd = 1e9;
+  for (const b of G.btns) {
+    if (!(b.id.startsWith('spot') || b.id.startsWith('slot') || b.id.startsWith('tray'))) continue;
+    if (skip !== undefined && +b.id.slice(4) === skip && !b.id.startsWith('tray')) continue;
+    const cx = b.x + b.w / 2;
+    const cy = b.y + b.h / 2;
+    const d = Math.hypot(cx - fx, cy - fy);
+    if (d < Math.max(b.w, b.h) * 0.9 && d < bd) {
+      bd = d;
+      best = b.id;
+    }
+  }
+  return best;
+}
+function drawDragM() {
+  const d = G.dragM;
+  if (!d || !d.moved) return;
+  const m = d.si !== undefined ? G.r.slots[d.si] : G.r.bench[d.bi];
+  if (!m) return;
+  const tgt = dropTarget(d.fx, d.fy, d.si);
+  if (tgt && d.si !== undefined) {
+    const t = G.r.slots[+tgt.slice(4)];
+    if (canStack(t, m)) bigText(ctx, '叠成 ' + (m.tier + t.tier) + ' 阶', d.fx, d.fy - 52, 13, '#ffd65a', LINE);
+  }
+  if (tgt && tgt.startsWith('spot') && G.r.lv.mode === 'defend') {
+    const p = F.slotPos(+tgt.slice(4));
+    const R = F.rangeOf(G.r, D.M[m.id]);
+    if (R) {
+      ctx.strokeStyle = 'rgba(120,255,120,0.9)';
+      ctx.fillStyle = 'rgba(120,255,120,0.12)';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, R, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+  }
+  machineIcon(m.id, m.tier, d.fx, d.fy - 24, 18, true);
 }
 
 function press(id) {
   const r = G.r;
   snd('tap', 40, 0.4);
+  if (G.recipesOpen && id !== 'recipesClose') return;
   if (G.tip) {
     if (id !== 'tipNext') return;
     G.tip.i++;
@@ -221,14 +322,20 @@ function press(id) {
     const used = G.benchSel.filter((e) => e === el).length;
     if (G.benchSel.length < r.bench2 && r.mats[el] > used) G.benchSel.push(el);
     tutAdvance('mat');
-  } else if (id.startsWith('bs')) {
+  } else if (id === 'recipes') G.recipesOpen = true;
+  else if (id === 'recipesClose') G.recipesOpen = false;
+  else if (id.startsWith('bs')) {
     G.benchSel.splice(+id.slice(2), 1);
-  } else if (id === 'combine') {
+  } else if (id === 'combine' || id.startsWith('make_')) {
+    if (id.startsWith('make_')) G.benchSel = D.M[id.slice(5)].els.slice();
     const mc = B.combine(r, G.benchSel);
     if (mc) {
       G.benchSel = [];
-      G.sel = r.bench.length - 1;
+      G.sel = r.bench.indexOf(mc);
+      if (mc.stacked) pop('手上的' + D.M[mc.id].name + '叠成 ' + mc.tier + ' 阶', FW / 2, G.scr === 'play' ? 580 : 520, '#ffd65a', 14);
       tutAdvance('combine');
+      G.bagua = { t: 0, a0: G.baguaAng || 0 };
+      PF.vibrate(true);
       azSwing(() => {
         snd('clang', 0, 0.6);
         snd('upgrade', 0, 0.5);
@@ -238,8 +345,10 @@ function press(id) {
           chunks(G.azAt.x, G.azAt.y, 6, '#c9933a', 0.8);
         }
       });
-      if (r.lv.mode === 'defend') pop(D.M[mc.id].name + '：点亮着的点位放下', FW / 2, 600, '#ffd65a', 15);
-      else pop(D.M[mc.id].name + '：点上面车上的格子装上去', FW / 2, 268, '#ffd65a', 15);
+      if (!mc.stacked) {
+        if (r.lv.mode === 'defend') pop(D.M[mc.id].name + '：拖到亮着的点位', FW / 2, 560, '#ffd65a', 15);
+        else pop(D.M[mc.id].name + '：拖到上面车上的格子', FW / 2, 520, '#ffd65a', 15);
+      }
     }
   } else if (id.startsWith('tray')) {
     const i = +id.slice(4);
@@ -334,18 +443,16 @@ function buyMeta(k) {
 
 // —— 第一关教学：点两次金 → 点合 → 点亮着的点位 → 龙出发 ——
 const TUT = [
-  { text: '龙要来了！先打一件机关：点两次「金」', target: 'mat_jin' },
-  { text: '金 + 金 = 连弩。点「合」，阿铸打一件', target: 'combine' },
-  { text: '点路边亮着的点位，把连弩放下（圈里的才打得到）', target: 'spot' },
-  { text: '放好了！龙来了。打碎龙节会掉材料，飞到下面', target: null },
+  { text: '龙要来了！两个一样的元素就能合一件机关：你有两个金，点「连弩」', target: 'make_nu' },
+  { text: '连弩到手上了。按住它，拖到路边亮着的点位放下（圈里的才打得到）', target: 'spot' },
+  { text: '放好了！龙来了。打碎龙节会掉材料，凑够了「能合」那里就会亮', target: null },
 ];
 function tutAdvance(what) {
   const T = G.tut;
   if (!T) return;
-  if (T.step === 0 && what === 'mat' && G.benchSel.length >= 2) T.step = 1;
-  else if (T.step === 1 && what === 'combine') T.step = 2;
-  else if (T.step === 2 && what === 'place') {
-    T.step = 3;
+  if (T.step === 0 && what === 'combine') T.step = 1;
+  else if (T.step === 1 && what === 'place') {
+    T.step = 2;
     T.t = 0;
     meta.tutDone = true;
     saveMeta();
@@ -378,35 +485,37 @@ function drawTut() {
     ctx.fill();
     ctx.stroke();
   }
-  const y = T.step === 2 ? 70 : 560;
+  const y = T.step === 1 ? 70 : 520;
   ctx.fillStyle = 'rgba(26,18,12,0.92)';
   ctx.strokeStyle = '#ffd65a';
   ctx.lineWidth = 2;
   roundRect(ctx, 14, y, FW - 28, 54, 12);
   ctx.fill();
   ctx.stroke();
-  bigText(ctx, '第 ' + (Math.min(T.step, 2) + 1) + ' 步 / 3', 28, y + 16, 11, '#ffd65a', LINE, 'left');
+  bigText(ctx, '第 ' + (Math.min(T.step, 1) + 1) + ' 步 / 2', 28, y + 16, 11, '#ffd65a', LINE, 'left');
   wrap(step.text, 28, y + 36, FW - 56, 13);
 }
 
 // —— 提示卡：第一次碰到某件事时弹出来，框出要看的地方，游戏停住，点「下一步」继续；每张只出现一次 ——
 // target：按钮 id，或者以 * 结尾表示「这一类按钮」（比如 buy* = 小店四张卡）
 const TIPS = {
-  combine2: [{ text: '下面亮了：又凑够能合的材料了。点两个材料，再点「合」', target: 'mat_*' }],
-  merge: [{ text: '手上这件和场上某件一样！点那个点位叠上去，升一阶、打得更狠', target: 'spot*' }],
+  combine2: [{ text: '下面亮了：又能合了。「能合」那里列着的，点一下就合', target: 'make_*' }],
+  recipes: [{ text: '不一样的元素也能合！比如木 + 火 = 火龙车、金 + 水 = 雷链。能合的会直接列出来；全部组合点「合成表」看', target: 'make_*|recipes' }],
+  merge: [{ text: '手上这件和场上某件一样（同名同阶）！把它拖到标着「叠↑」的点位，两件合成高一阶、打得更狠。场上的机关也能直接拖到另一件一样的上面叠', target: 'spot*' }],
+  mergeShop: [{ text: '手上这件和上面某格一样（同名同阶）！把它拖到标着「叠」的格子，两件合成高一阶', target: 'slot*' }],
   buySpot: [{ text: '铜钱够了：点「修」开一个新点位，多放一件机关', target: 'buySpot' }],
   cards: [{ text: '升级了！挑一个属性，这一关一直有效。圆圈的颜色就是五行', target: 'card*' }],
   shop: [
     { text: '这是小店：用打来的铜钱买道具和机关，买了这一关一直有效', target: 'buy*|lock*' },
     { text: '「锁」：这件先留着，下一波还在店里', target: 'lock*' },
     { text: '「刷新」：换一批新的，越刷越贵', target: 'refresh' },
-    { text: '上面是你的点位。想换位置：点手上的机关，再点这里', target: 'slot*' },
+    { text: '上面是你的点位。手上的机关（最下面）按住拖上来就能放；拖到一样的机关上会叠成高一阶', target: 'slot*' },
     { text: '准备好了就点「下一波」', target: 'nextWave' },
   ],
   attack: [{ text: '进攻：车自己开、自己躲砖。车上的机关自动打前面的砖，撞上砖啃一口掉 1 血', target: null }],
   station: [
-    { text: '到驿站了：点材料放进机关台，点「合」做一件机关', target: 'mat_*' },
-    { text: '合好的机关在这里，点一下，再点上面车上的格子装上去', target: 'slot*' },
+    { text: '到驿站了：能合的机关列在这里，点一下就合', target: 'make_*' },
+    { text: '合好的机关在最下面，按住拖到上面车上的格子装上去', target: 'slot*' },
     { text: '小店、锁、刷新和守城一样。准备好了点「继续冲」', target: 'nextWave' },
   ],
 };
@@ -500,12 +609,14 @@ function killFx(x, y, col) {
 function orb(x, y, el) {
   const i = D.ELS.indexOf(el);
   const live = G.r && G.r.lv.mode === 'defend';
-  const tx = live ? 28 + i * 40 : 214 + i * 28;
-  const ty = live ? 663 : 32;
+  const tx = live ? 24 + i * 44 : 214 + i * 28;
+  const ty = live ? 618 : 32;
   G.fx.push({ k: 'orb', x, y, x0: x, y0: y, tx, ty, t: 0, life: 0.55, col: D.EL[el].col });
 }
 
 const sy = (wy) => A.HEAD_Y - (wy - G.st.head.wy);
+// 同名的拖到一起就合：阶数相加，最高 4 阶
+const canStack = (a, b) => !!(a && b && a.id === b.id && a.tier + b.tier <= 4);
 function handleEvents() {
   const st = G.st;
   if (!st) return;
@@ -671,9 +782,9 @@ function frame() {
   }
   if (G.tut) {
     G.tut.t += dt;
-    if (G.tut.step >= 3 && G.tut.t > 3.5) G.tut = null;
+    if (G.tut.step >= 2 && G.tut.t > 3.5) G.tut = null;
   }
-  const tutHold = (G.tut && G.tut.step < 3 && !G.bot) || !!G.tip;
+  const tutHold = (G.tut && G.tut.step < 2 && !G.bot) || !!G.tip || !!G.recipesOpen;
   if (G.scr === 'play' && G.st && !tutHold) {
     acc += dt * G.speed;
     let n = 0;
@@ -696,6 +807,13 @@ function frame() {
     if (G.teach.t > 5) G.teach = null;
   }
   stepAz(dt);
+  if (G.bagua) {
+    G.bagua.t += dt;
+    if (G.bagua.t >= 0.38) {
+      G.baguaAng = G.bagua.a0 + Math.PI;
+      G.bagua = null;
+    }
+  }
   stepFx(dt);
   render();
 }
@@ -777,6 +895,8 @@ function render() {
     if (G.scr === 'result') drawResult();
   }
   if (G.scr === 'brief') drawBrief();
+  if (G.scr === 'play' || G.scr === 'shop') drawDragM();
+  if (G.recipesOpen) drawRecipes();
   if (G.tip) drawTip();
   ctx.restore();
   checkTips();
@@ -786,15 +906,21 @@ function render() {
 function checkTips() {
   if (G.tip || G.bot || !G.r) return;
   const r = G.r;
-  if (G.scr === 'play' && r.lv.mode === 'defend' && !(G.tut && G.tut.step < 3) && !G.tut) {
-    if (G.sel >= 0 && r.bench[G.sel] && r.slots.some((x) => x && x.id === r.bench[G.sel].id && x.tier === r.bench[G.sel].tier && x.tier < 4)) showTip('merge');
-    else if (canMake(r) && G.st.t > 3) showTip('combine2');
+  if (G.scr === 'play' && r.lv.mode === 'defend' && !(G.tut && G.tut.step < 2) && !G.tut) {
+    const mk = B.makeable(r);
+    if (mk.some((m) => m.els[0] !== m.els[1])) showTip('recipes');
+    else if (r.bench.length && r.bench.some((m) => r.slots.some((x) => canStack(x, m))) && (G.sel = r.bench.findIndex((m) => r.slots.some((x) => canStack(x, m)))) >= 0) showTip('merge');
+    else if (G.sel >= 0 && r.bench[G.sel] && r.slots.some((x) => x && x.id === r.bench[G.sel].id && x.tier === r.bench[G.sel].tier && x.tier < 4)) showTip('merge');
+    else if (B.makeable(r).length && G.st.t > 3) showTip('combine2');
     else if (F.spotCost(r) !== null && r.coins >= F.spotCost(r)) showTip('buySpot');
   }
   if (G.scr === 'play' && r.lv.mode === 'attack' && G.st.t > 0.5) showTip('attack');
   if (G.scr === 'shop') {
     if (r.cards) showTip('cards');
-    else showTip(r.lv.mode === 'defend' ? 'shop' : 'station');
+    else if (r.bench.some((m) => r.slots.some((x) => canStack(x, m))) && meta.tips && (meta.tips.shop || meta.tips.station)) {
+      G.sel = r.bench.findIndex((m) => r.slots.some((x) => canStack(x, m)));
+      showTip('mergeShop');
+    } else showTip(r.lv.mode === 'defend' ? 'shop' : 'station');
   }
 }
 
@@ -968,8 +1094,8 @@ function drawDefend() {
   ctx.fillStyle = '#3a2a1c';
   roundRect(ctx, FW / 2 - 24, wy - 4, 48, 46, 18);
   ctx.fill();
-  drawAzhu(326, 640, 100);
-  G.azAt = { x: 326, y: 634 };
+  drawAzhu(330, 598, 86);
+  G.azAt = { x: 330, y: 592 };
   // 点位：城外高低不同的箭楼、土台
   const r = G.r;
   const hand = G.sel >= 0 ? D.M[r.bench[G.sel].id] : null;
@@ -977,7 +1103,7 @@ function drawDefend() {
     const open = i < r.slots.length;
     const mc = r.slots[i];
     // 射程圈：选中手上的机关时，空点位都画一圈；点了某个点位就画它的圈
-    const showR = hand && open && (!mc || (mc.id === r.bench[G.sel].id && mc.tier === r.bench[G.sel].tier)) ? F.rangeOf(r, hand) : G.spotView && G.spotView.i === i && mc ? F.rangeOf(r, D.M[mc.id]) : 0;
+    const showR = hand && open && (!mc || canStack(mc, r.bench[G.sel])) ? F.rangeOf(r, hand) : G.spotView && G.spotView.i === i && mc ? F.rangeOf(r, D.M[mc.id]) : 0;
     if (showR) {
       ctx.fillStyle = 'rgba(255,214,90,0.10)';
       ctx.strokeStyle = 'rgba(255,214,90,0.7)';
@@ -1017,7 +1143,13 @@ function drawDefend() {
       return;
     }
     G.btns.push({ id: 'spot' + i, x: p.x - 24, y: p.y - 30, w: 48, h: 48 });
-    if (mc) machineIcon(mc.id, mc.tier, p.x, p.y - 14, 14, G.spotView && G.spotView.i === i);
+    if (mc && !(G.dragM && G.dragM.si === i && G.dragM.moved)) machineIcon(mc.id, mc.tier, p.x, p.y - 14, 14, G.spotView && G.spotView.i === i);
+    if (mc && hand && canStack(mc, r.bench[G.sel])) {
+      ctx.fillStyle = '#c8402c';
+      roundRect(ctx, p.x + 4, p.y - 38, 30, 18, 9);
+      ctx.fill();
+      bigText(ctx, '叠↑', p.x + 19, p.y - 29, 11, '#fff8e6', LINE);
+    }
     else if (hand) {
       ctx.strokeStyle = 'rgba(255,214,90,' + (0.6 + 0.4 * Math.sin(G.t * 10)) + ')';
       ctx.lineWidth = 3;
@@ -1243,7 +1375,7 @@ function drawHud() {
     bigText(ctx, D.EL[e].name, x, 18, 10, LINE, '#fff8e6');
     bigText(ctx, String(r.mats[e]), x, 38, 12, '#fff8e6', LINE);
   });
-  if (G.banner > 0 && G.scr === 'play' && !(G.tut && G.tut.step < 3)) {
+  if (G.banner > 0 && G.scr === 'play' && !(G.tut && G.tut.step < 2)) {
     ctx.save();
     ctx.globalAlpha = clamp(G.banner / 0.3, 0, 1);
     ctx.fillStyle = 'rgba(20,14,10,0.8)';
@@ -1260,58 +1392,192 @@ function drawHud() {
   }
 }
 
+// 放了第一个材料后，哪些材料能跟它合出（已解锁的）机关
+function partners(r) {
+  if (G.benchSel.length !== 1) return null;
+  const a = G.benchSel[0];
+  const set = new Set();
+  D.MACHINES.forEach((m) => {
+    if (r.recipes.indexOf(m.id) < 0) return;
+    const i = m.els.indexOf(a);
+    if (i >= 0) set.add(m.els[1 - i]);
+  });
+  return set;
+}
+// 材料按钮：能配的亮绿圈，配不上的变暗
+function matBtn(r, e, x, y, w, h, size, label) {
+  const left = r.mats[e] - G.benchSel.filter((q) => q === e).length;
+  const pt = partners(r);
+  const ok = !pt || pt.has(e);
+  btn('mat_' + e, x, y, w, h, label, left > 0 && ok ? D.EL[e].dark : '#3a3028', '', { size, dis: left <= 0 || !ok });
+  if (pt && ok && left > 0) {
+    ctx.strokeStyle = 'rgba(120,255,120,' + (0.6 + 0.4 * Math.sin(G.t * 10)) + ')';
+    ctx.lineWidth = 3;
+    roundRect(ctx, x - 2, y - 2, w + 4, h + 4, 12);
+    ctx.stroke();
+  }
+}
+// 黑白太极 + 八卦：垫在机关台格子底下，合成成功时转半圈
+function drawBagua(cx, cy, R) {
+  const sp = G.bagua ? G.bagua : null;
+  let ang = 0;
+  let glow = 0;
+  if (sp) {
+    const k = Math.min(1, sp.t / 0.38);
+    ang = sp.a0 + Math.PI * (1 - Math.pow(1 - k, 3));
+    glow = 1 - k;
+  } else ang = G.baguaAng || 0;
+  ctx.save();
+  ctx.translate(cx, cy);
+  if (glow > 0) {
+    ctx.fillStyle = 'rgba(255,240,180,' + 0.6 * glow + ')';
+    ctx.beginPath();
+    ctx.arc(0, 0, R * (1.15 + glow * 0.5), 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.rotate(ang);
+  // 八卦：外圈八组卦线
+  ctx.fillStyle = 'rgba(30,24,18,0.9)';
+  ctx.beginPath();
+  ctx.arc(0, 0, R, 0, Math.PI * 2);
+  ctx.fill();
+  const TRI = ['111', '011', '101', '001', '110', '010', '100', '000'];
+  ctx.fillStyle = '#d8cdb8';
+  TRI.forEach((t, i) => {
+    ctx.save();
+    ctx.rotate((i / 8) * Math.PI * 2);
+    for (let k = 0; k < 3; k++) {
+      const yy = -R + 3 + k * 4;
+      if (t[k] === '1') ctx.fillRect(-7, yy, 14, 2.4);
+      else {
+        ctx.fillRect(-7, yy, 5.5, 2.4);
+        ctx.fillRect(1.5, yy, 5.5, 2.4);
+      }
+    }
+    ctx.restore();
+  });
+  // 太极
+  const r2 = R * 0.56;
+  ctx.fillStyle = '#f4efe6';
+  ctx.beginPath();
+  ctx.arc(0, 0, r2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#1E1A16';
+  ctx.beginPath();
+  ctx.arc(0, 0, r2, -Math.PI / 2, Math.PI / 2);
+  ctx.arc(0, r2 / 2, r2 / 2, Math.PI / 2, -Math.PI / 2, true);
+  ctx.arc(0, -r2 / 2, r2 / 2, Math.PI / 2, -Math.PI / 2, false);
+  ctx.fill();
+  ctx.fillStyle = '#f4efe6';
+  ctx.beginPath();
+  ctx.arc(0, r2 / 2, r2 / 7, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#1E1A16';
+  ctx.beginPath();
+  ctx.arc(0, -r2 / 2, r2 / 7, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#1E1A16';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(0, 0, r2, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
+// 合成表：全部 15 件机关要什么材料、做什么用
+function drawRecipes() {
+  const r = G.r;
+  ctx.fillStyle = 'rgba(8,5,3,0.9)';
+  ctx.fillRect(0, 0, FW, FH);
+  bigText(ctx, '合 成 表', FW / 2, 40, 22, '#ffd65a', LINE);
+  bigText(ctx, '两个一样的元素就能合；不一样的组合要先在工坊开配方', FW / 2, 66, 11, '#cbb8a8', LINE);
+  D.MACHINES.forEach((m, i) => {
+    const x = 12 + (i % 2) * 172;
+    const y = 82 + Math.floor(i / 2) * 76;
+    const own = (r ? r.recipes : meta.recipes).indexOf(m.id) >= 0;
+    ctx.fillStyle = own ? '#2f2218' : '#1c140e';
+    ctx.strokeStyle = own ? '#9a6a22' : '#3a2c20';
+    ctx.lineWidth = 1.5;
+    roundRect(ctx, x, y, 164, 70, 10);
+    ctx.fill();
+    ctx.stroke();
+    // 两个元素
+    m.els.forEach((e, k) => {
+      ctx.fillStyle = own ? D.EL[e].col : '#4a3e34';
+      ctx.beginPath();
+      ctx.arc(x + 16 + k * 26, y + 20, 10, 0, Math.PI * 2);
+      ctx.fill();
+      bigText(ctx, D.EL[e].name, x + 16 + k * 26, y + 20, 11, LINE, '#fff8e6');
+    });
+    bigText(ctx, '=', x + 64, y + 20, 13, '#fff8e6', LINE);
+    machineIcon(m.id, 1, x + 88, y + 20, 11);
+    bigText(ctx, m.name, x + 104, y + 20, 13, own ? '#fff8e6' : '#7a6a56', LINE, 'left');
+    ctx.save();
+    wrap((own ? '' : '（没开）') + m.tip.split(' / ')[r && r.lv.mode === 'attack' ? 1 : 0] + (m.cost ? '；代价：' + m.cost : ''), x + 8, y + 44, 150, 10);
+    ctx.restore();
+  });
+  btn('recipesClose', FW / 2 - 60, FH - 46, 120, 38, '关上', '#c8402c', '', { size: 16 });
+}
+
 // —— 守城：打的时候常驻在下面的机关台（照《赵云与阿斗》边打边合）——
 function canMake(r) {
   return D.MACHINES.some((m) => r.recipes.indexOf(m.id) >= 0 && m.els.every((e) => r.mats[e] >= m.els.filter((x) => x === e).length));
 }
 function drawLiveBench() {
   const r = G.r;
-  const y0 = 642;
-  ctx.fillStyle = 'rgba(16,10,6,0.86)';
-  roundRect(ctx, 4, y0, FW - 8, 76, 12);
+  const y0 = 600;
+  ctx.fillStyle = 'rgba(16,10,6,0.9)';
+  roundRect(ctx, 4, y0, FW - 8, 116, 12);
   ctx.fill();
-  if (canMake(r)) {
+  const mk = B.makeable(r);
+  if (mk.length) {
     ctx.strokeStyle = 'rgba(255,214,90,' + (0.5 + 0.4 * Math.sin(G.t * 8)) + ')';
     ctx.lineWidth = 3;
-    roundRect(ctx, 4, y0, FW - 8, 76, 12);
+    roundRect(ctx, 4, y0, FW - 8, 116, 12);
     ctx.stroke();
   }
-  // 五种材料（点了放进格子）
+  // 第一行：五种材料各有几个（只看，不用点）+ 八卦 + 合成表
   D.ELS.forEach((e, i) => {
-    const x = 10 + i * 40;
-    const left = r.mats[e] - G.benchSel.filter((q) => q === e).length;
-    btn('mat_' + e, x, y0 + 6, 36, 30, D.EL[e].name + left, left > 0 ? D.EL[e].dark : '#3a3028', '', { size: 12, dis: left <= 0 });
-  });
-  // 格子 + 合
-  for (let i = 0; i < r.bench2; i++) {
-    const x = 214 + i * 34;
-    const e = G.benchSel[i];
-    G.btns.push({ id: 'bs' + i, x, y0: 0, y: y0 + 6, w: 30, h: 30 });
-    ctx.fillStyle = e ? D.EL[e].col : '#2a2018';
+    const x = 12 + i * 44;
+    ctx.fillStyle = r.mats[e] ? D.EL[e].col : '#3a3028';
     ctx.strokeStyle = LINE;
     ctx.lineWidth = 1.5;
-    roundRect(ctx, x, y0 + 6, 30, 30, 7);
+    ctx.beginPath();
+    ctx.arc(x + 12, y0 + 18, 11, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
-    if (e) bigText(ctx, D.EL[e].name, x + 15, y0 + 21, 14, LINE, '#fff8e6');
-  }
-  const pv = B.preview(r, G.benchSel);
-  const lbl = pv.state === 'ok' ? '合 ' + pv.m.name : pv.state === 'locked' ? '没配方' : pv.state === 'none' ? '合不出' : '放 2 个';
-  btn('combine', 214 + r.bench2 * 34, y0 + 6, FW - 222 - r.bench2 * 34, 30, lbl, pv.state === 'ok' ? '#3f8a3a' : '#4a3e34', '', { size: 12, dis: pv.state !== 'ok' });
-  // 第二行：手上的机关（点一下选中，再点地图上亮着的点位）
-  if (r.bench.length) {
-    bigText(ctx, '手上：', 12, y0 + 56, 11, '#cbb8a8', LINE, 'left');
-    r.bench.forEach((m, i) => {
-      const x = 64 + i * 34;
-      if (x > FW - 20) return;
-      G.btns.push({ id: 'tray' + i, x: x - 15, y: y0 + 41, w: 30, h: 30 });
-      machineIcon(m.id, m.tier, x, y0 + 55, 11, G.sel === i);
+    bigText(ctx, D.EL[e].name, x + 12, y0 + 18, 11, LINE, '#fff8e6');
+    bigText(ctx, '×' + r.mats[e], x + 30, y0 + 18, 12, r.mats[e] ? '#fff8e6' : '#7a6a56', LINE);
+  });
+  drawBagua(244, y0 + 20, 16);
+  btn('recipes', FW - 82, y0 + 6, 72, 26, '合成表', '#5a3a1e', '', { size: 12 });
+  // 第二行：现在能合的，点一下就合
+  if (mk.length) {
+    bigText(ctx, '能合：', 12, y0 + 52, 11, '#ffd65a', LINE, 'left');
+    mk.slice(0, 4).forEach((m, i) => {
+      const x = 52 + i * 76;
+      G.btns.push({ id: 'make_' + m.id, x, y: y0 + 38, w: 72, h: 30 });
+      ctx.fillStyle = '#3f6a2a';
+      ctx.strokeStyle = LINE;
+      ctx.lineWidth = 1.5;
+      roundRect(ctx, x, y0 + 38, 72, 30, 9);
+      ctx.fill();
+      ctx.stroke();
+      machineIcon(m.id, 1, x + 14, y0 + 52, 9);
+      bigText(ctx, m.name, x + 27, y0 + 47, 11, '#fff8e6', LINE, 'left');
+      bigText(ctx, m.els.map((e) => D.EL[e].name).join('+'), x + 27, y0 + 60, 9, '#d8e8c8', LINE, 'left');
     });
-    if (G.sel >= 0) bigText(ctx, '点亮着的点位放下', FW - 12, y0 + 56, 11, '#ffd65a', LINE, 'right');
-  } else {
-    const tip = pv.state === 'ok' ? pv.m.tip.split(' / ')[0] : canMake(r) ? '有能合的！点两个材料' : '打碎龙节会掉材料，飞进上面';
-    bigText(ctx, tip, FW / 2, y0 + 56, 11, pv.state === 'ok' ? '#ffd65a' : '#cbb8a8', LINE);
-  }
+    if (mk.length > 4) bigText(ctx, '+' + (mk.length - 4), FW - 12, y0 + 52, 11, '#ffd65a', LINE, 'right');
+  } else bigText(ctx, '打碎龙节会掉材料；凑够两个就能合，能合的会出现在这里', FW / 2, y0 + 52, 11, '#cbb8a8', LINE);
+  // 第三行：手上的机关（按住拖到点位）
+  bigText(ctx, '手上：', 12, y0 + 94, 11, '#cbb8a8', LINE, 'left');
+  r.bench.forEach((m, i) => {
+    const x = 64 + i * 34;
+    if (x > FW - 110) return;
+    if (G.dragM && G.dragM.bi === i && G.dragM.moved) return;
+    G.btns.push({ id: 'tray' + i, x: x - 15, y: y0 + 79, w: 30, h: 30 });
+    machineIcon(m.id, m.tier, x, y0 + 93, 11, G.sel === i);
+  });
+  if (r.bench.length) bigText(ctx, '按住拖到点位', FW - 12, y0 + 94, 11, '#ffd65a', LINE, 'right');
 }
 
 // —— 波间：属性卡 → 机关台 + 小店 ——
@@ -1321,6 +1587,7 @@ function drawShop() {
   ctx.fillRect(0, 52, FW, FH - 52);
   if (r.cards) return drawCards();
   const res = G.waveRes || { coins: 0 };
+  btn('recipes', FW - 84, 58, 74, 26, '合成表', '#5a3a1e', '', { size: 12 });
   bigText(ctx, '第 ' + r.wave + ' 波守住了' + (res.coins ? '  收获 +' + res.coins : ''), FW / 2, 72, 16, '#ffd65a', LINE);
   // 点位
   bigText(ctx, r.lv.mode === 'defend' ? '守城点位（想换位置：点下面的机关，再点这里）' : '车上的格子（点下面的机关，再点这里装上去）', FW / 2, 96, 11, '#cbb8a8', LINE);
@@ -1329,13 +1596,21 @@ function drawShop() {
   r.slots.forEach((s, i) => {
     const x = FW / 2 - (n * (sw + 4)) / 2 + i * (sw + 4);
     G.btns.push({ id: 'slot' + i, x, y: 106, w: sw, h: sw });
-    ctx.fillStyle = '#4a3a2a';
+    const hm = G.sel >= 0 ? r.bench[G.sel] : null;
+    const canMerge = canStack(s, hm);
+    ctx.fillStyle = canMerge ? '#6b4a1e' : '#4a3a2a';
     ctx.strokeStyle = G.sel >= 0 ? '#ffd65a' : LINE;
     ctx.lineWidth = 2;
     roundRect(ctx, x, 106, sw, sw, 8);
     ctx.fill();
     ctx.stroke();
     if (s) machineIcon(s.id, s.tier, x + sw / 2, 106 + sw / 2 - 2, sw * 0.36);
+    if (canMerge) {
+      ctx.fillStyle = '#c8402c';
+      roundRect(ctx, x + sw - 18, 100, 22, 16, 8);
+      ctx.fill();
+      bigText(ctx, '叠', x + sw - 7, 108, 10, '#fff8e6', LINE);
+    }
   });
   // 羁绊
   const bc = B.bondCount(r);
@@ -1349,49 +1624,60 @@ function drawShop() {
   if (r.lv.mode === 'defend') {
     bigText(ctx, '守城时合成在打的时候做；这里升级、买东西', FW / 2, 196, 12, '#cbb8a8', LINE);
   } else {
-  // 机关台（进攻：在驿站合）
-  bigText(ctx, '机关台：点材料放进来', FW / 2, 186, 12, '#fff8e6', LINE);
+  // 机关台（进攻：在驿站合）——能合的直接列出来，点一下就合
   D.ELS.forEach((e, i) => {
-    const x = 22 + i * 64;
-    const left = r.mats[e] - G.benchSel.filter((q) => q === e).length;
-    btn('mat_' + e, x, 198, 54, 36, D.EL[e].name + ' ' + left, left > 0 ? D.EL[e].dark : '#3a3028', '', { size: 15, dis: left <= 0 });
-  });
-  for (let i = 0; i < r.bench2; i++) {
-    const x = 70 + i * 58;
-    const e = G.benchSel[i];
-    G.btns.push({ id: 'bs' + i, x, y: 244, w: 48, h: 48 });
-    ctx.fillStyle = e ? D.EL[e].col : '#2a2018';
+    const x = 26 + i * 64;
+    ctx.fillStyle = r.mats[e] ? D.EL[e].col : '#3a3028';
     ctx.strokeStyle = LINE;
-    ctx.lineWidth = 2;
-    roundRect(ctx, x, 244, 48, 48, 10);
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(x + 14, 200, 13, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
-    if (e) bigText(ctx, D.EL[e].name, x + 24, 268, 20, LINE, '#fff8e6');
-  }
-  const pv = B.preview(r, G.benchSel);
-  const lbl = pv.state === 'ok' ? '合成 ' + pv.m.name : pv.state === 'locked' ? '配方没开：' + pv.m.name : pv.state === 'none' ? '合不出' : '放 2 个';
-  btn('combine', 70 + r.bench2 * 58, 244, FW - 86 - r.bench2 * 58, 48, lbl, pv.state === 'ok' ? '#3f8a3a' : '#4a3e34', pv.state === 'ok' ? pv.m.tip.split(' / ')[r.lv.mode === 'defend' ? 0 : 1] : '', { size: 14, dis: pv.state !== 'ok' });
-  }
-  drawAzhu(36, 298, 70);
-  G.azAt = { x: 46, y: 292 };
-  // 做好的机关
-  bigText(ctx, r.bench.length ? '手上的机关（点一下选中，再点上面的格子装上去）' : '合好的机关会放在这里', FW / 2, 306, 11, '#cbb8a8', LINE);
-  r.bench.forEach((m, i) => {
-    const x = 24 + i * 46;
-    if (x > FW - 70) return;
-    G.btns.push({ id: 'tray' + i, x: x - 18, y: 318, w: 40, h: 40 });
-    machineIcon(m.id, m.tier, x + 2, 336, 15, G.sel === i);
+    bigText(ctx, D.EL[e].name, x + 14, 200, 12, LINE, '#fff8e6');
+    bigText(ctx, '×' + r.mats[e], x + 36, 200, 13, r.mats[e] ? '#fff8e6' : '#7a6a56', LINE);
   });
-  if (G.sel >= 0) btn('sell', FW - 62, 318, 52, 32, '拆掉', '#6b3a2a', '', { size: 13 });
+  const mk = B.makeable(r);
+  drawBagua(FW / 2, 256, 26);
+  if (mk.length) {
+    mk.slice(0, 4).forEach((m, i) => {
+      const x = 12 + i * 86;
+      G.btns.push({ id: 'make_' + m.id, x, y: 226, w: 80, h: 58 });
+      ctx.fillStyle = '#3f6a2a';
+      ctx.strokeStyle = LINE;
+      ctx.lineWidth = 2;
+      roundRect(ctx, x, 226, 80, 58, 10);
+      ctx.fill();
+      ctx.stroke();
+      machineIcon(m.id, 1, x + 40, 246, 12);
+      bigText(ctx, m.name, x + 40, 266, 12, '#fff8e6', LINE);
+      bigText(ctx, m.els.map((e) => D.EL[e].name).join('+'), x + 40, 279, 9, '#d8e8c8', LINE);
+    });
+  } else bigText(ctx, '材料不够合；路上打碎砖会掉材料', FW / 2, 290, 12, '#cbb8a8', LINE);
+  }
+  G.azAt = { x: FW / 2, y: 268 };
   // 小店
-  bigText(ctx, '小 店', 40, 382, 15, '#ffd65a', LINE);
-  btn('refresh', FW - 118, 368, 108, 28, '刷新 ' + B.refreshCost(r), '#5a4a3a', '', { size: 13 });
+  bigText(ctx, '小 店', 40, 318, 15, '#ffd65a', LINE);
+  btn('refresh', FW - 118, 304, 108, 28, '刷新 ' + B.refreshCost(r), '#5a4a3a', '', { size: 13 });
   r.shop.forEach((o, i) => {
     const x = 12 + (i % 2) * 172;
-    const y = 404 + Math.floor(i / 2) * 104;
-    drawOffer(o, i, x, y, 164, 96);
+    const y = 338 + Math.floor(i / 2) * 96;
+    drawOffer(o, i, x, y, 164, 88);
   });
-  btn('nextWave', 60, 628, FW - 120, 60, r.lv.mode === 'defend' ? '下一波' : '继续冲', '#c8402c', '', { size: 24 });
+  // 手上的机关：放在最下面，拖到上面的格子
+  ctx.fillStyle = 'rgba(40,28,18,0.9)';
+  roundRect(ctx, 8, 534, FW - 16, 66, 12);
+  ctx.fill();
+  bigText(ctx, r.bench.length ? '手上的机关：按住拖到上面的格子' : '手上的机关（合好、买到的放这里）', 18, 548, 11, '#cbb8a8', LINE, 'left');
+  r.bench.forEach((m, i) => {
+    const x = 34 + i * 44;
+    if (x > FW - 80) return;
+    if (G.dragM && G.dragM.bi === i && G.dragM.moved) return;
+    G.btns.push({ id: 'tray' + i, x: x - 18, y: 556, w: 40, h: 40 });
+    machineIcon(m.id, m.tier, x, 576, 15, G.sel === i);
+  });
+  if (G.sel >= 0) btn('sell', FW - 66, 558, 54, 32, '拆掉', '#6b3a2a', '', { size: 13 });
+  btn('nextWave', 60, 620, FW - 120, 58, r.lv.mode === 'defend' ? '下一波' : '继续冲', '#c8402c', '', { size: 24 });
 }
 
 function drawOffer(o, i, x, y, w, h) {

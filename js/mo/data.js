@@ -69,7 +69,7 @@ function recipeOf(list) {
   const key = list.slice().sort().join('+');
   return MACHINES.find((m) => m.els.slice().sort().join('+') === key) || null;
 }
-const START_RECIPES = ['nu', 'teng', 'han', 'pi', 'chui', 'huolong', 'leilian'];
+const START_RECIPES = ['nu', 'teng', 'han', 'pi', 'chui', 'huolong', 'rongyan', 'tiejia', 'leilian', 'huichun']; // 单一 5 + 相生 5；相克 5 在工坊开
 
 // —— 五行羁绊（含某一行的机关凑 2→6 件）——
 const BONDS = {
@@ -138,7 +138,7 @@ const BUILDERS = [
 // —— 边城 8 关 + 2 挑战 ——
 // mode：defend / attack；car：small / dragon；waves：几波；boss：铁头龙 / 巨弩城楼
 const LEVELS = [
-  { id: '1-1', story: '公输家的机关长龙来攻边城', mode: 'defend', waves: 5, hp: 1, len: 14, teach: '龙掉的材料飞进下面；点两个合机关，再点路边亮着的点位放下' },
+  { id: '1-1', story: '公输家的机关长龙来攻边城', mode: 'defend', waves: 5, hp: 1, len: 14, teach: '龙掉的材料飞进下面；能合的点一下就合，再拖到路边亮着的点位' },
   { id: '1-2', story: '长龙退了，城外留下一串车辙', mode: 'defend', waves: 5, hp: 1.4, len: 16, teach: '两件一样的机关叠在一起，升一阶' },
   { id: '1-3', story: '顺着车辙找到公输家的前哨', mode: 'attack', car: 'small', waves: 4, num: 5, teach: '车自己往上冲；到驿站合机关，点车上的格子装上去' },
   { id: '1-4', story: '公输家推来铁头龙撞城门', mode: 'defend', waves: 6, hp: 2.0, len: 18, boss: 'tietou', types: { shield: 0.12, powder: 0.08 } },

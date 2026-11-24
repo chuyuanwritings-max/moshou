@@ -181,8 +181,14 @@ function combine(r, list) {
   for (const e in need) if (r.mats[e] < need[e]) return null;
   for (const e in need) r.mats[e] -= need[e];
   const tier = has(r, 'luban') && r.R() < 0.1 ? 2 : 1;
-  const mc = { id: p.m.id, tier };
-  r.bench.push(mc);
+  let mc = { id: p.m.id, tier };
+  // 手上已经有同名的：自动叠起来（阶数相加，最高 4 阶）
+  const same = r.bench.find((x) => x.id === mc.id && x.tier + mc.tier <= 4);
+  if (same) {
+    same.tier += mc.tier;
+    mc = same;
+    mc.stacked = true;
+  } else r.bench.push(mc);
   r.log.made++;
   return mc;
 }
@@ -198,8 +204,8 @@ function place(r, bi, si) {
   r.bench.splice(bi, 1);
   let res = 'place';
   if (!cur) r.slots[si] = m;
-  else if (cur.id === m.id && cur.tier === m.tier && cur.tier < 4) {
-    cur.tier++;
+  else if (cur.id === m.id && cur.tier + m.tier <= 4) {
+    cur.tier += m.tier;
     res = 'merge';
   } else {
     r.slots[si] = m;
@@ -208,6 +214,35 @@ function place(r, bi, si) {
   }
   r.dirty = true;
   return { res, slot: r.slots[si] };
+}
+// 场上的机关直接拖：拖到一样的上面合一阶，拖到空位挪过去，拖到别的上面换位置
+function moveSlot(r, from, to) {
+  if (from === to || !r.slots[from] || to < 0 || to >= r.slots.length) return null;
+  const a = r.slots[from];
+  const b = r.slots[to];
+  let res;
+  if (!b) {
+    r.slots[to] = a;
+    r.slots[from] = null;
+    res = 'move';
+  } else if (b.id === a.id && b.tier + a.tier <= 4) {
+    b.tier += a.tier;
+    r.slots[from] = null;
+    res = 'merge';
+  } else {
+    r.slots[to] = a;
+    r.slots[from] = b;
+    res = 'swap';
+  }
+  r.dirty = true;
+  return { res, slot: r.slots[to] };
+}
+function makeable(r) {
+  return D.MACHINES.filter((m) => {
+    if (r.recipes.indexOf(m.id) < 0) return false;
+    if (r.lv.challenge === 'onlyFire' && m.els.indexOf('huo') < 0) return false;
+    return m.els.every((e) => r.mats[e] >= m.els.filter((x) => x === e).length);
+  });
 }
 function sell(r, bi) {
   const m = r.bench[bi];
@@ -276,4 +311,4 @@ function buy(r, i) {
   return true;
 }
 
-module.exports = { newRun, stats, dmgMul, cdMul, rollCrit, hurtSelf, heal, gainKill, waveEnd, xpNeed, statCards, pickCard, preview, combine, place, sell, rollShop, refresh, refreshCost, buy, has, bondCount };
+module.exports = { makeable, moveSlot, newRun, stats, dmgMul, cdMul, rollCrit, hurtSelf, heal, gainKill, waveEnd, xpNeed, statCards, pickCard, preview, combine, place, sell, rollShop, refresh, refreshCost, buy, has, bondCount };
