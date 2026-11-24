@@ -6292,7 +6292,15 @@ const scale = Math.min(W / FW, H / FH);
 const ox = (W - FW * scale) / 2;
 const oy = (H - FH * scale) / 2;
 const CITY = RC.CHAPTERS[0];
-const IMG = { bg: PF.loadImage('素材/bg_city.jpg'), hero: PF.loadImage('素材/hero.png') };
+const IMG = { bg: PF.loadImage('素材/bg_city.jpg'), hero: PF.loadImage('素材/hero.png'), azIdle: PF.loadImage('素材/azhu_idle.png'), azSwing: PF.loadImage('素材/azhu_swing.png') };
+
+// —— 阿铸的动作帧（AI 视频抽帧做的，代码只管放在哪、多大、什么时候播）——
+// 待机 7 帧往返播（1-2-…-7-6-…-2），每帧 160 毫秒；挥锤 12 帧，第 10 帧砸地（震屏、火花放在这一帧）
+const AZ = {
+  idle: { fw: 144, fh: 275, cols: 7, seq: [0, 1, 2, 3, 4, 5, 6, 5, 4, 3, 2, 1], ms: 160 },
+  swing: { fw: 174, fh: 313, cols: 6, dur: [70, 70, 70, 70, 70, 70, 50, 50, 50, 250, 120, 120], hit: 9 },
+};
+const AZ_SWING_TOTAL = AZ.swing.dur.reduce((a, b) => a + b, 0);
 const LINE = RD.LINE;
 
 const G = {
@@ -6301,7 +6309,57 @@ const G = {
   fx: [], pops: [], shake: 0, flash: 0, flashCol: '#fff', hitstop: 0,
   btns: [], drag: null, sel: -1, benchSel: [], banner: 0, teach: null,
   bot: null, speed: 1, result: null, sndCd: {}, cardsAt: 0,
+  az: { anim: 'idle', t: 0 }, azAt: null,
 };
+
+// 阿铸挥一锤：砸地那一帧调 onHit
+function azSwing(onHit) {
+  G.az = { anim: 'swing', t: 0, onHit, fired: false };
+}
+function stepAz(dt) {
+  const a = G.az;
+  a.t += dt * 1000;
+  if (a.anim !== 'swing') return;
+  let acc = 0;
+  for (let i = 0; i <= AZ.swing.hit; i++) acc += AZ.swing.dur[i - 1] || 0;
+  if (!a.fired && a.t >= acc) {
+    a.fired = true;
+    if (a.onHit) a.onHit();
+  }
+  if (a.t >= AZ_SWING_TOTAL) G.az = { anim: 'idle', t: 0 };
+}
+// 以脚底中点对齐：x 是脚底中间，footY 是脚底，h 是待机时人物的高度
+function drawAzhu(x, footY, h) {
+  const a = G.az;
+  const sc = h / AZ.idle.fh;
+  let img;
+  let f;
+  let A;
+  if (a.anim === 'swing' && IMG.azSwing.ok) {
+    A = AZ.swing;
+    img = IMG.azSwing;
+    let acc = 0;
+    f = A.dur.length - 1;
+    for (let i = 0; i < A.dur.length; i++) {
+      acc += A.dur[i];
+      if (a.t < acc) {
+        f = i;
+        break;
+      }
+    }
+  } else if (IMG.azIdle.ok) {
+    A = AZ.idle;
+    img = IMG.azIdle;
+    f = A.seq[Math.floor(a.t / A.ms) % A.seq.length];
+  } else return;
+  const sx = (f % A.cols) * A.fw;
+  const sy = Math.floor(f / A.cols) * A.fh;
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.beginPath();
+  ctx.ellipse(x, footY - 2, h * 0.22, h * 0.05, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.drawImage(img, sx, sy, A.fw, A.fh, x - (A.fw * sc) / 2, footY - A.fh * sc, A.fw * sc, A.fh * sc);
+}
 
 function snd(name, gap, vol, rate) {
   const now = PF.now();
@@ -6413,8 +6471,16 @@ function press(id) {
     const mc = B.combine(r, G.benchSel);
     if (mc) {
       G.benchSel = [];
-      snd('upgrade', 0, 0.6);
       G.sel = r.bench.length - 1;
+      azSwing(() => {
+        snd('clang', 0, 0.6);
+        snd('upgrade', 0, 0.5);
+        G.shake = Math.max(G.shake, 6);
+        if (G.azAt) {
+          sparks(G.azAt.x, G.azAt.y, 14, '#ffd65a');
+          chunks(G.azAt.x, G.azAt.y, 6, '#c9933a', 0.8);
+        }
+      });
       if (r.lv.mode === 'defend') pop(D.M[mc.id].name + '：点亮着的点位放下', FW / 2, 600, '#ffd65a', 15);
       else pop(D.M[mc.id].name + '：点上面车上的格子装上去', FW / 2, 268, '#ffd65a', 15);
     }
@@ -6729,6 +6795,7 @@ function frame() {
     G.teach.t += dt;
     if (G.teach.t > 5) G.teach = null;
   }
+  stepAz(dt);
   stepFx(dt);
   render();
 }
@@ -6982,7 +7049,8 @@ function drawDefend() {
   ctx.fillStyle = '#3a2a1c';
   roundRect(ctx, FW / 2 - 24, wy - 4, 48, 46, 18);
   ctx.fill();
-  if (IMG.hero.ok) ctx.drawImage(IMG.hero, FW / 2 + 26, wy - 52, 26, 60);
+  drawAzhu(326, 640, 100);
+  G.azAt = { x: 326, y: 634 };
   // 点位：城外高低不同的箭楼、土台
   const r = G.r;
   const hand = G.sel >= 0 ? D.M[r.bench[G.sel].id] : null;
@@ -7377,6 +7445,8 @@ function drawShop() {
   const lbl = pv.state === 'ok' ? '合成 ' + pv.m.name : pv.state === 'locked' ? '配方没开：' + pv.m.name : pv.state === 'none' ? '合不出' : '放 2 个';
   btn('combine', 70 + r.bench2 * 58, 244, FW - 86 - r.bench2 * 58, 48, lbl, pv.state === 'ok' ? '#3f8a3a' : '#4a3e34', pv.state === 'ok' ? pv.m.tip.split(' / ')[r.lv.mode === 'defend' ? 0 : 1] : '', { size: 14, dis: pv.state !== 'ok' });
   }
+  drawAzhu(36, 298, 70);
+  G.azAt = { x: 46, y: 292 };
   // 做好的机关
   bigText(ctx, r.bench.length ? '手上的机关（点一下选中，再点上面的格子装上去）' : '合好的机关会放在这里', FW / 2, 306, 11, '#cbb8a8', LINE);
   r.bench.forEach((m, i) => {
@@ -7519,6 +7589,7 @@ function drawMap() {
   });
   btn('old', 10, FH - 44, 120, 34, '0.5 旧玩法', '#4a3a2a', '', { size: 12 });
   const cb = D.BUILDERS.find((x) => x.id === meta.camp.builder);
+  drawAzhu(312, FH - 62, 120);
   bigText(ctx, '机关师：' + cb.name, FW - 14, FH - 34, 13, '#ffd65a', LINE, 'right');
   btn('restart', FW - 130, FH - 26 - 0, 120, 22, '换人 = 从头再来', '#4a3a2a', '', { size: 11 });
   if (G.confirm) {
