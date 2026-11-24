@@ -8,6 +8,7 @@
     "ignore": [
       { "type": "folder", "value": "tools" },
       { "type": "folder", "value": "test" },
+      { "type": "folder", "value": ".git" },
       { "type": "file", "value": "preview.html" },
       { "type": "file", "value": "index.html" },
       { "type": "file", "value": "README.md" }

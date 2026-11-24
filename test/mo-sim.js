@@ -7,20 +7,11 @@ const meta = { slots: 3, dragonLen: 4, cartSlots: 2, wallHp: 150, bench: 2, reci
 
 function botWorkshop(r, noBuy) {
   while (r.cards) B.pickCard(r, 0);
-  // 能合就合：先试单一（两份一样），再试相生
+  // 能合就合：只合界面上「能合」那排列出来的（守「只准用火」这类限制，检验报告指出以前绕过了）
   for (let guard = 0; guard < 20; guard++) {
-    let made = false;
-    for (const m of D.MACHINES) {
-      if (r.recipes.indexOf(m.id) < 0) continue;
-      const need = {};
-      m.els.forEach((e) => (need[e] = (need[e] || 0) + 1));
-      if (Object.keys(need).every((e) => r.mats[e] >= need[e])) {
-        B.combine(r, m.els);
-        made = true;
-        break;
-      }
-    }
-    if (!made) break;
+    const m = B.makeable(r)[0];
+    if (!m) break;
+    B.combine(r, m.els);
   }
   // 摆上城墙：同名同阶合，空位放
   for (let bi = r.bench.length - 1; bi >= 0; bi--) {

@@ -226,7 +226,18 @@ function btn(id, x, y, w, h, label, col, sub, opt) {
   if (sub) bigText(ctx, sub, x + w / 2, y + h / 2 + 12, 11, '#ffe9b0', LINE);
 }
 
+// 手上的机关会在同一帧里被放走、叠掉、拆掉；凡是用 G.sel / G.dragM 之前先查它还指着东西，
+// 指空了就清掉（检验报告 A9：放下最后一件的同一帧再点原格子，会把游戏点死）
+function fixSel() {
+  const r = G.r;
+  const n = r ? r.bench.length : 0;
+  if (G.sel >= n) G.sel = -1;
+  const d = G.dragM;
+  if (d && ((d.bi !== undefined && !(r && r.bench[d.bi])) || (d.si !== undefined && !(r && r.slots[d.si])))) G.dragM = null;
+}
+
 function onTouch(type, id, px, py) {
+  fixSel();
   if (type === 'down' && G.cs) {
     G.cs.skip(); // 点一下跳过开局运镜
     return;
@@ -239,6 +250,7 @@ function onTouch(type, id, px, py) {
         // 手上的机关：按住就能拖
         if (bid.startsWith('tray') && !G.tip && !G.recipesOpen) {
           const bi = +bid.slice(4);
+          if (!G.r || !G.r.bench[bi]) return; // 按钮表是上一帧画的，这格可能刚空
           G.dragM = { id, bi, fx, fy, fx0: fx, fy0: fy, moved: false, was: G.sel === bi };
           G.sel = bi;
           return;
@@ -375,6 +387,7 @@ function drawDragM() {
 }
 
 function press(id) {
+  fixSel();
   const r = G.r;
   snd('tap', 40, 0.4);
   if (G.recipesOpen && id !== 'recipesClose' && !id.startsWith('make_')) return;
@@ -456,6 +469,7 @@ function press(id) {
     }
   } else if (id.startsWith('tray')) {
     const i = +id.slice(4);
+    if (!r || !r.bench[i]) return;
     G.sel = G.sel === i ? -1 : i;
   } else if (id === 'smash') {
     if (G.scr !== 'play') return;
@@ -1004,6 +1018,7 @@ function setTimeout0(fn, ms) {
 let last = PF.now();
 let acc = 0;
 function frame() {
+  fixSel();
   const now = PF.now();
   let dt = Math.min(0.05, (now - last) / 1000);
   last = now;

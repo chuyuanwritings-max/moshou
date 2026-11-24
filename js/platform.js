@@ -47,7 +47,9 @@ function setup(onTouch) {
     canvas.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       unlockAudio();
-      canvas.setPointerCapture(e.pointerId);
+      try {
+        canvas.setPointerCapture(e.pointerId); // 指针已经抬起时会抛错；抛了也照样处理这次按下
+      } catch (err) {}
       const p = pos(e);
       onTouch('down', e.pointerId, p[0], p[1]);
     });

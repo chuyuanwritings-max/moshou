@@ -69,3 +69,30 @@ __require('')('./game.js');
 fs.writeFileSync(path.join(root, 'preview.html'), html);
 fs.writeFileSync(path.join(root, 'index.html'), html);
 console.log('写好了 preview.html 和 index.html（' + files.length + ' 个文件）');
+
+// 包体检查：按 project.config.json 的打包忽略表，算微信真会打进主包的文件有多大。
+// 微信上限 4 MB，我们自己留余量到 3.5 MB；超了就报错（退出码 1），不让超重的版本推上线。
+const LIMIT_MB = 3.5;
+const cfg = JSON.parse(fs.readFileSync(path.join(root, 'project.config.json'), 'utf8'));
+const ign = (cfg.packOptions && cfg.packOptions.ignore) || [];
+const skip = (rel, isDir) => rel.split('/').some((s) => s.startsWith('.')) || ign.some((r) => r.value === rel && (r.type === 'folder') === isDir);
+let bytes = 0;
+const big = [];
+(function size(dir) {
+  for (const f of fs.readdirSync(path.join(root, dir))) {
+    const rel = dir ? dir + '/' + f : f;
+    const st = fs.statSync(path.join(root, rel));
+    if (skip(rel, st.isDirectory())) continue;
+    if (st.isDirectory()) size(rel);
+    else {
+      bytes += st.size;
+      big.push([rel, st.size]);
+    }
+  }
+})('');
+const mb = bytes / 1024 / 1024;
+if (mb > LIMIT_MB) {
+  big.sort((a, b) => b[1] - a[1]);
+  console.error('✗ 包体 ' + mb.toFixed(2) + ' MB，超过 ' + LIMIT_MB + ' MB。最大的几个：\n' + big.slice(0, 8).map(([f, s]) => '  ' + (s / 1024).toFixed(0) + ' KB  ' + f).join('\n'));
+  process.exitCode = 1;
+} else console.log('包体 ' + mb.toFixed(2) + ' MB（上限 ' + LIMIT_MB + ' MB）');

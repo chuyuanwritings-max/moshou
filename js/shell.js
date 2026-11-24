@@ -17,10 +17,17 @@ function go(name) {
   handler = modes[name].onTouch;
   if (modes[name].enter) modes[name].enter();
 }
+// 先排下一帧再画这一帧：这一帧哪里报错，也只丢这一帧，游戏不会定住
+let errN = 0;
 function loop() {
-  if (active && modes[active]) modes[active].frame();
   PF.nextFrame(loop);
+  try {
+    if (active && modes[active]) modes[active].frame();
+  } catch (e) {
+    errN++;
+    if (errN <= 5) console.error('[frame error]', e);
+  }
 }
 PF.nextFrame(loop);
 
-module.exports = { view, register, go, current: () => active };
+module.exports = { view, register, go, current: () => active, errors: () => errN };
