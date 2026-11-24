@@ -16,6 +16,10 @@ const meta = Object.assign(
   PF.load(SAVE) || {}
 );
 const saveMeta = () => PF.save(SAVE, meta);
+// 这一趟战役：开局选定的机关师 + 打到哪了。换机关师 = 从 1-1 重新开始（墨晶、配方、神机保留）
+if (!meta.camp) meta.camp = meta.cleared && Object.keys(meta.cleared).length ? { builder: meta.builder, cleared: Object.assign({}, meta.cleared) } : null;
+if (!meta.ever) meta.ever = Object.assign({}, meta.cleared || {});
+const bUnlocked = (b) => !b.locked || (b.unlockIf && meta.ever[b.unlockIf]);
 function metaNow() {
   return {
     slots: D.META.slots.base + meta.slotsLv,
@@ -39,7 +43,7 @@ const IMG = { bg: PF.loadImage('素材/bg_city.jpg'), hero: PF.loadImage('素材
 const LINE = RD.LINE;
 
 const G = {
-  scr: 'map', // map | brief | play | shop | result | meta
+  scr: meta.camp ? 'map' : 'pick', // pick | map | brief | play | shop | result | meta
   lvIdx: 0, r: null, st: null, t: 0,
   fx: [], pops: [], shake: 0, flash: 0, flashCol: '#fff', hitstop: 0,
   btns: [], drag: null, sel: -1, benchSel: [], banner: 0, teach: null,
@@ -56,14 +60,15 @@ function snd(name, gap, vol, rate) {
 // —— 进一关 ——
 function unlocked(i) {
   const lv = D.LEVELS[i];
-  if (lv.challenge) return !!meta.cleared['1-8'];
-  return i === 0 || !!meta.cleared[D.LEVELS[i - 1].id];
+  const c = meta.camp ? meta.camp.cleared : {};
+  if (lv.challenge) return !!c['1-8'];
+  return i === 0 || !!c[D.LEVELS[i - 1].id];
 }
 function startLevel(i) {
   G.lvIdx = i;
   const lv = D.LEVELS[i];
   const seed = ((PF.now() % 1000000007) ^ (meta.runs * 2654435761)) >>> 0;
-  G.r = B.newRun(metaNow(), lv, meta.builder, seed || 1);
+  G.r = B.newRun(metaNow(), lv, meta.camp.builder, seed || 1);
   G.st = lv.mode === 'defend' ? F.newDefend(G.r) : A.newAttack(G.r);
   G.scr = 'play';
   G.fx.length = 0;
@@ -125,13 +130,21 @@ function press(id) {
     G.scr = 'brief';
   } else if (id === 'go') startLevel(G.lvIdx);
   else if (id === 'back') G.scr = 'map';
-  else if (id.startsWith('bld_')) {
-    const b = D.BUILDERS.find((x) => x.id === id.slice(4));
-    G.bldView = b.id;
-    if (!b.locked) {
-      meta.builder = b.id;
-      saveMeta();
-    }
+  else if (id.startsWith('bld_')) G.bldView = id.slice(4);
+  else if (id === 'pickGo') {
+    const b = D.BUILDERS.find((x) => x.id === (G.bldView || 'azhu'));
+    if (!bUnlocked(b)) return;
+    meta.camp = { builder: b.id, cleared: {} };
+    meta.builder = b.id;
+    saveMeta();
+    G.scr = 'map';
+    snd('evolve', 0, 0.5);
+  } else if (id === 'restart') G.confirm = true;
+  else if (id === 'restartNo') G.confirm = false;
+  else if (id === 'restartYes') {
+    G.confirm = false;
+    G.bldView = null;
+    G.scr = 'pick';
   } else if (id === 'meta') G.scr = 'meta';
   else if (id === 'old') SH.go('menu');
   else if (id.startsWith('card')) {
@@ -410,10 +423,18 @@ function finish(win, left) {
     meta.shenji[sj.id] = true;
     newShenji = true;
   }
-  if (win) meta.cleared[lv.id] = true;
+  const newB = [];
+  if (win) {
+    meta.camp.cleared[lv.id] = true;
+    const before = D.BUILDERS.filter(bUnlocked).length;
+    meta.ever[lv.id] = true;
+    meta.cleared[lv.id] = true;
+    D.BUILDERS.forEach((b) => b.unlockIf === lv.id && newB.push(b.name));
+    if (D.BUILDERS.filter(bUnlocked).length === before) newB.length = 0;
+  }
   meta.runs++;
   saveMeta();
-  G.result = { win, first, mojing, pages, chars, newShenji, left, wave: G.r.wave, t: 0 };
+  G.result = { win, first, mojing, pages, chars, newShenji, newB, left, wave: G.r.wave, t: 0 };
   setTimeout0(() => (G.scr = 'result'), win ? 700 : 500);
 }
 function setTimeout0(fn, ms) {
@@ -519,7 +540,8 @@ function render() {
   ctx.beginPath();
   ctx.rect(0, 0, FW, FH);
   ctx.clip();
-  if (G.scr === 'map' || G.scr === 'brief') drawMap();
+  if (G.scr === 'pick') drawPick();
+  else if (G.scr === 'map' || G.scr === 'brief') drawMap();
   else if (G.scr === 'meta') drawMeta();
   else {
     ctx.save();
@@ -1202,6 +1224,7 @@ function drawResult() {
   const sj = D.SHENJI[0];
   bigText(ctx, '墨斗：墨 ' + (meta.chars['墨'] || 0) + '/' + sj.need + '  斗 ' + (meta.chars['斗'] || 0) + '/' + sj.need, FW / 2, 300, 13, '#cbb8a8', LINE);
   if (g.newShenji) bigText(ctx, '凑齐神机「墨斗」！开局送一件机关', FW / 2, 330, 16, '#ffd65a', LINE);
+  if (g.newB && g.newB.length) bigText(ctx, '解锁新机关师：' + g.newB.join('、') + '（下次重来时可选）', FW / 2, 356, 13, '#9dff7a', LINE);
   btn('again', 60, 380, FW - 120, 64, g.win ? '再打一次' : '再来！', '#c8402c');
   btn('toMap', 60, 460, FW - 120, 56, '回地图', '#3f6a5a');
   btn('meta', 60, 530, FW - 120, 50, '工坊（花墨晶变强）', '#8a5a1e', '', { size: 16 });
@@ -1227,7 +1250,7 @@ function drawMap() {
   D.LEVELS.forEach((lv, i) => {
     const [x, y] = NODE_POS[i];
     const open = unlocked(i);
-    const done = !!meta.cleared[lv.id];
+    const done = !!meta.camp.cleared[lv.id];
     const R = lv.boss ? 26 : lv.challenge ? 20 : 22;
     G.btns.push({ id: 'node' + i, x: x - R, y: y - R, w: R * 2, h: R * 2 });
     ctx.fillStyle = !open ? '#4a3e34' : lv.mode === 'defend' ? '#3f6a5a' : '#a0402c';
@@ -1242,6 +1265,20 @@ function drawMap() {
     if (lv.boss) bigText(ctx, 'Boss', x, y - R - 8, 11, '#ff8a5a', LINE);
   });
   btn('old', 10, FH - 44, 120, 34, '0.5 旧玩法', '#4a3a2a', '', { size: 12 });
+  const cb = D.BUILDERS.find((x) => x.id === meta.camp.builder);
+  bigText(ctx, '机关师：' + cb.name, FW - 14, FH - 34, 13, '#ffd65a', LINE, 'right');
+  btn('restart', FW - 130, FH - 26 - 0, 120, 22, '换人 = 从头再来', '#4a3a2a', '', { size: 11 });
+  if (G.confirm) {
+    ctx.fillStyle = 'rgba(10,6,4,0.82)';
+    ctx.fillRect(0, 0, FW, FH);
+    ctx.fillStyle = '#2b1f16';
+    roundRect(ctx, 30, 250, FW - 60, 200, 14);
+    ctx.fill();
+    bigText(ctx, '换机关师要从 1-1 重新开始', FW / 2, 286, 17, '#ffd65a', LINE);
+    wrap('这一趟的关卡进度会清掉；墨晶、配方、神机、解锁的机关师都还在。', 50, 320, FW - 100, 12);
+    btn('restartYes', 50, 380, 120, 50, '重新开始', '#c8402c', '', { size: 16 });
+    btn('restartNo', FW - 170, 380, 120, 50, '算了', '#3f6a5a', '', { size: 16 });
+  }
 }
 function drawBrief() {
   const lv = D.LEVELS[G.lvIdx];
@@ -1257,38 +1294,51 @@ function drawBrief() {
   wrap(lv.story, 30, 128, FW - 60, 14);
   const mode = lv.mode === 'defend' ? '守城：边打边合机关，自己挑路边的点位放，射程圈里的才打得到' : (lv.car === 'dragon' ? '进攻：机关龙（' + metaNow().dragonLen + ' 格）' : '进攻：小工程车（' + metaNow().cartSlots + ' 格）') + '自己开，你在驿站合机关、装上车';
   wrap(mode, 30, 170, FW - 60, 12);
-  const n = D.BUILDERS.filter((b) => !b.locked).length;
-  bigText(ctx, '机关师 · 已解锁 ' + n + ' / ' + D.BUILDERS.length, FW / 2, 214, 14, '#fff8e6', LINE);
-  // 24 个格子：6 列 × 4 行
+  const cb = D.BUILDERS.find((x) => x.id === meta.camp.builder);
+  bigText(ctx, '机关师：' + cb.name + '（这一趟一直用他）', FW / 2, 230, 14, '#ffd65a', LINE);
+  wrap('擅长：' + cb.good + '　加：' + cb.plus + '　减：' + cb.minus, 30, 260, FW - 60, 12);
+  btn('go', 50, 630, FW - 100, 56, '出 发', '#c8402c', '', { size: 22 });
+  btn('back', FW - 62, 78, 40, 30, '×', '#4a3a2a', '', { size: 16 });
+}
+
+// —— 开一趟战役：选机关师（选了就一直用，换人要从头再来）——
+function drawPick() {
+  drawBg(0.6);
+  ctx.fillStyle = 'rgba(20,14,10,0.85)';
+  ctx.fillRect(0, 0, FW, 64);
+  bigText(ctx, '选一位机关师', 14, 24, 20, '#ffd65a', LINE, 'left');
+  bigText(ctx, '选了这一趟就一直用他；想换人得从 1-1 重新开始', 14, 48, 11, '#fff8e6', LINE, 'left');
+  const n = D.BUILDERS.filter(bUnlocked).length;
+  bigText(ctx, '已解锁 ' + n + ' / ' + D.BUILDERS.length + '（往后打才能解锁更多）', FW / 2, 84, 13, '#fff8e6', LINE);
   D.BUILDERS.forEach((b, i) => {
     const x = 26 + (i % 6) * 52;
-    const y = 228 + Math.floor(i / 6) * 58;
-    const on = meta.builder === b.id;
-    const view = (G.bldView || meta.builder) === b.id;
+    const y = 100 + Math.floor(i / 6) * 58;
+    const ok = bUnlocked(b);
+    const view = (G.bldView || 'azhu') === b.id;
     G.btns.push({ id: 'bld_' + b.id, x, y, w: 46, h: 52 });
-    ctx.fillStyle = b.locked ? '#241a12' : on ? '#6b4a1e' : '#3a2a1e';
+    ctx.fillStyle = ok ? '#3a2a1e' : '#241a12';
     ctx.strokeStyle = view ? '#ffd65a' : b.change ? '#7a4aa0' : LINE;
     ctx.lineWidth = view ? 3 : 1.5;
     roundRect(ctx, x, y, 46, 52, 8);
     ctx.fill();
     ctx.stroke();
-    bigText(ctx, b.locked ? '？' : b.name[0], x + 23, y + 20, 20, b.locked ? '#6a5a48' : '#fff8e6', LINE);
-    bigText(ctx, b.name.length > 3 ? b.name.slice(0, 3) : b.name, x + 23, y + 42, 10, b.locked ? '#7a6a56' : '#ffe9b0', LINE);
-    if (b.locked) bigText(ctx, '锁', x + 38, y + 8, 9, '#ffd65a', LINE);
+    bigText(ctx, ok ? b.name[0] : '？', x + 23, y + 20, 20, ok ? '#fff8e6' : '#6a5a48', LINE);
+    bigText(ctx, b.name.length > 3 ? b.name.slice(0, 3) : b.name, x + 23, y + 42, 10, ok ? '#ffe9b0' : '#7a6a56', LINE);
+    if (!ok) bigText(ctx, '锁', x + 38, y + 8, 9, '#ffd65a', LINE);
   });
-  // 详情
-  const b = D.BUILDERS.find((x) => x.id === (G.bldView || meta.builder));
-  const dy = 466;
-  ctx.fillStyle = '#1f160f';
-  roundRect(ctx, 24, dy, FW - 48, 150, 10);
+  const b = D.BUILDERS.find((x) => x.id === (G.bldView || 'azhu'));
+  const ok = bUnlocked(b);
+  const dy = 340;
+  ctx.fillStyle = 'rgba(31,22,15,0.95)';
+  roundRect(ctx, 20, dy, FW - 40, 200, 12);
   ctx.fill();
-  bigText(ctx, b.name + (b.change ? '（换打法）' : ''), 36, dy + 18, 16, b.locked ? '#a89880' : '#ffd65a', LINE, 'left');
-  bigText(ctx, b.locked ? '未解锁：' + b.unlock : meta.builder === b.id ? '已选' : '点一下就选', FW - 36, dy + 18, 11, b.locked ? '#ff9a6a' : '#9dff7a', LINE, 'right');
-  wrap('擅长：' + b.good + ' · ' + b.line, 36, dy + 44, FW - 72, 12);
-  wrap('加：' + b.plus, 36, dy + 74, FW - 72, 12);
-  wrap('减：' + b.minus, 36, dy + 116, FW - 72, 12);
-  btn('go', 50, 630, FW - 100, 56, '出 发 · ' + D.BUILDERS.find((x) => x.id === meta.builder).name, '#c8402c', '', { size: 20 });
-  btn('back', FW - 62, 78, 40, 30, '×', '#4a3a2a', '', { size: 16 });
+  bigText(ctx, b.name + (b.change ? '（换打法）' : ''), 34, dy + 22, 18, ok ? '#ffd65a' : '#a89880', LINE, 'left');
+  if (!ok) bigText(ctx, '未解锁：' + b.unlock, FW - 34, dy + 22, 11, '#ff9a6a', LINE, 'right');
+  wrap('擅长：' + b.good + ' · ' + b.line, 34, dy + 54, FW - 68, 13);
+  wrap('加：' + b.plus, 34, dy + 92, FW - 68, 13);
+  wrap('减：' + b.minus, 34, dy + 146, FW - 68, 13);
+  btn('pickGo', 50, 570, FW - 100, 60, ok ? '就选' + b.name + '，开始' : '还没解锁', ok ? '#c8402c' : '#4a3e34', '', { size: 20, dis: !ok });
+  btn('old', 10, FH - 44, 120, 34, '0.5 旧玩法', '#4a3a2a', '', { size: 12 });
 }
 
 // —— 工坊（局外）——
