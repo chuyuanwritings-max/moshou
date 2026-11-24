@@ -24,7 +24,16 @@ const fs = require('fs');
   await page.waitForTimeout(500);
   check(await g(() => typeof __mo !== 'undefined' && __mo.G.scr === 'pick'), '第一次进来先选机关师');
   const M = await g(() => ({ scale: __mo.scale, ox: __mo.ox, oy: __mo.oy }));
+  const tips = [];
   const tapBtn = async (id) => {
+    // 先把弹出来的提示卡点掉（记下弹过哪些）
+    for (let k = 0; k < 8 && id !== 'tipNext' && (await g(() => !!__mo.G.tip)); k++) {
+      tips.push(await g(() => __mo.G.tip.key));
+      const t = await g(() => __mo.G.btns.find((x) => x.id === 'tipNext'));
+      if (!t) break;
+      await page.mouse.click(M.ox + (t.x + t.w / 2) * M.scale, M.oy + (t.y + t.h / 2) * M.scale);
+      await page.waitForTimeout(80);
+    }
     const b = await g((i) => __mo.G.btns.find((x) => x.id === i), id);
     if (!b) throw new Error('找不到按钮 ' + id);
     await page.mouse.click(M.ox + (b.x + b.w / 2) * M.scale, M.oy + (b.y + b.h / 2) * M.scale);
@@ -88,7 +97,12 @@ const fs = require('fs');
   await page.waitForFunction(() => __mo.G.scr === 'shop', null, { timeout: 30000 });
   await g(() => { __mo.G.speed = 1; });
   check(true, '倒计时到 0：龙当场全碎，进波间');
+  await page.waitForTimeout(200);
+  if (await g(() => __mo.G.tip && __mo.G.tip.key === 'cards')) { await snap('mo05b_提示_属性卡'); }
   while (await g(() => !!__mo.G.r.cards)) await tapBtn('card0');
+  await page.waitForTimeout(200);
+  check(await g(() => __mo.G.tip && __mo.G.tip.key === 'shop'), '第一次进小店：弹出 5 步引导（小店、锁、刷新、点位、下一波）');
+  await snap('mo05c_提示_小店');
   check(!(await g(() => __mo.G.btns.some((b) => b.id === 'mat_jin'))), '守城的波间只剩升级和小店（没有机关台）');
   await page.waitForTimeout(200);
   await snap('mo06_波间小店');
@@ -121,11 +135,17 @@ const fs = require('fs');
   await page.waitForTimeout(2500);
   await snap('mo10_进攻');
   check(await g(() => !__mo.G.drag), '车自己开、自己躲砖，不用拖');
+  check(await g(() => __mo.G.tip && __mo.G.tip.key === 'attack'), '第一次进攻：弹引导卡');
+  await snap('mo10b_提示_进攻');
+  await g(() => { __mo.G.tip = null; });
   await g(() => { __mo.G.speed = 6; __mo.G.r.hp = 999; __mo.G.r.hpMax = 999; });
   await page.waitForFunction(() => __mo.G.scr === 'shop' || __mo.G.scr === 'result', null, { timeout: 30000 });
   check(true, '冲到驿站，进波间机关台');
   await g(() => { __mo.G.speed = 1; __mo.G.bot = null; });
   while (await g(() => !!__mo.G.r.cards)) await tapBtn('card0');
+  await page.waitForTimeout(150);
+  check(await g(() => __mo.G.tip && __mo.G.tip.key === 'station'), '第一次到驿站：弹 3 步引导（合、装车、继续冲）');
+  await snap('mo11a_提示_驿站');
   await g(() => { __mo.G.r.mats.huo += 2; });
   await tapBtn('mat_huo'); await tapBtn('mat_huo'); await tapBtn('combine');
   check(await g(() => __mo.G.sel >= 0 && __mo.G.r.slots[1] === null), '驿站合出霹雳罐：放在下面，不自动装');
@@ -139,6 +159,7 @@ const fs = require('fs');
   check(await g(() => __mo.G.st.car === 'dragon'), '1-8 开机关龙：一节一格');
   const fps = await g(() => new Promise((res) => { let n = 0; const t0 = performance.now(); const f = () => { n++; if (performance.now() - t0 < 2000) requestAnimationFrame(f); else res(n / 2); }; requestAnimationFrame(f); }));
   check(fps > 45, '帧率 ' + Math.round(fps));
+  check(tips.indexOf('combine2') >= 0 || tips.indexOf('merge') >= 0 || tips.indexOf('buySpot') >= 0, '打的时候弹过引导卡：' + [...new Set(tips)].join('、'));
   check(errors.length === 0, '没有报错' + (errors.length ? '：' + errors.slice(0, 3).join(' | ') : ''));
   await browser.close();
   console.log('全部通过');

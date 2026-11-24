@@ -73,8 +73,8 @@ function startWave(st) {
 function spawnDragon(st, boss) {
   const r = st.r;
   const lv = r.lv;
-  const len = boss ? lv.len + 8 : Math.max(8, lv.len - 4 + r.wave * 3 + st.spawned * 2);
-  const base = (4 + r.wave * 3 + st.spawned * 1.5) * lv.hp;
+  const len = boss ? lv.len + 8 : Math.max(8, lv.len - 4 + r.wave * 2 + st.spawned * 2);
+  const base = (4 + r.wave * 2.2 + st.spawned * 1) * lv.hp;
   const segs = [];
   for (let i = 0; i < len; i++) {
     let type = null;
@@ -83,7 +83,7 @@ function spawnDragon(st, boss) {
     if (boss && i === 0) hp *= 10;
     segs.push({ hp, hp0: hp, type, s: -i * GAP - 10, alive: true, burnT: 0, frozen: 0, chest: false, id: i });
   }
-  st.dragons.push({ segs, len0: len, v: (36 + r.wave * 5 + lv.hp * 4) * (boss ? 0.7 : 1), boss, dashCd: 6 + r.R() * 3, glow: 0, dash: 0, slowT: 0, slowK: 0, freezeT: 0, blockT: 0 });
+  st.dragons.push({ segs, len0: len, v: (36 + r.wave * 3 + lv.hp * 4) * (boss ? 0.7 : 1), boss, dashCd: 6 + r.R() * 3, glow: 0, dash: 0, slowT: 0, slowK: 0, freezeT: 0, blockT: 0 });
   st.spawned++;
 }
 

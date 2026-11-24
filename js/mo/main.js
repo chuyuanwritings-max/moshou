@@ -182,6 +182,12 @@ function onTouch(type, id, px, py) {
 function press(id) {
   const r = G.r;
   snd('tap', 40, 0.4);
+  if (G.tip) {
+    if (id !== 'tipNext') return;
+    G.tip.i++;
+    if (G.tip.i >= TIPS[G.tip.key].length) G.tip = null;
+    return;
+  }
   if (id.startsWith('node')) {
     const i = +id.slice(4);
     if (!unlocked(i)) return;
@@ -381,6 +387,75 @@ function drawTut() {
   ctx.stroke();
   bigText(ctx, '第 ' + (Math.min(T.step, 2) + 1) + ' 步 / 3', 28, y + 16, 11, '#ffd65a', LINE, 'left');
   wrap(step.text, 28, y + 36, FW - 56, 13);
+}
+
+// —— 提示卡：第一次碰到某件事时弹出来，框出要看的地方，游戏停住，点「下一步」继续；每张只出现一次 ——
+// target：按钮 id，或者以 * 结尾表示「这一类按钮」（比如 buy* = 小店四张卡）
+const TIPS = {
+  combine2: [{ text: '下面亮了：又凑够能合的材料了。点两个材料，再点「合」', target: 'mat_*' }],
+  merge: [{ text: '手上这件和场上某件一样！点那个点位叠上去，升一阶、打得更狠', target: 'spot*' }],
+  buySpot: [{ text: '铜钱够了：点「修」开一个新点位，多放一件机关', target: 'buySpot' }],
+  cards: [{ text: '升级了！挑一个属性，这一关一直有效。圆圈的颜色就是五行', target: 'card*' }],
+  shop: [
+    { text: '这是小店：用打来的铜钱买道具和机关，买了这一关一直有效', target: 'buy*|lock*' },
+    { text: '「锁」：这件先留着，下一波还在店里', target: 'lock*' },
+    { text: '「刷新」：换一批新的，越刷越贵', target: 'refresh' },
+    { text: '上面是你的点位。想换位置：点手上的机关，再点这里', target: 'slot*' },
+    { text: '准备好了就点「下一波」', target: 'nextWave' },
+  ],
+  attack: [{ text: '进攻：车自己开、自己躲砖。车上的机关自动打前面的砖，撞上砖啃一口掉 1 血', target: null }],
+  station: [
+    { text: '到驿站了：点材料放进机关台，点「合」做一件机关', target: 'mat_*' },
+    { text: '合好的机关在这里，点一下，再点上面车上的格子装上去', target: 'slot*' },
+    { text: '小店、锁、刷新和守城一样。准备好了点「继续冲」', target: 'nextWave' },
+  ],
+};
+function showTip(key) {
+  meta.tips = meta.tips || {};
+  if (meta.tips[key] || G.tip || G.bot) return;
+  meta.tips[key] = 1;
+  saveMeta();
+  G.tip = { key, i: 0 };
+}
+function tipRect() {
+  const st = TIPS[G.tip.key][G.tip.i];
+  if (!st.target) return null;
+  const bs = G.btns.filter((b) => st.target.split('|').some((t) => (t.endsWith('*') ? b.id.startsWith(t.slice(0, -1)) : b.id === t)));
+  if (!bs.length) return null;
+  const x0 = Math.min(...bs.map((b) => b.x));
+  const y0 = Math.min(...bs.map((b) => b.y));
+  const x1 = Math.max(...bs.map((b) => b.x + b.w));
+  const y1 = Math.max(...bs.map((b) => b.y + b.h));
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+}
+function drawTip() {
+  const steps = TIPS[G.tip.key];
+  const st = steps[G.tip.i];
+  const R = tipRect();
+  // 压暗，框出要看的地方
+  ctx.fillStyle = 'rgba(8,5,3,0.55)';
+  if (R) {
+    ctx.fillRect(0, 0, FW, R.y - 6);
+    ctx.fillRect(0, R.y + R.h + 6, FW, FH);
+    ctx.fillRect(0, R.y - 6, R.x - 6, R.h + 12);
+    ctx.fillRect(R.x + R.w + 6, R.y - 6, FW, R.h + 12);
+    const k = 0.5 + 0.5 * Math.sin(G.t * 8);
+    ctx.strokeStyle = 'rgba(255,214,90,' + (0.6 + 0.4 * k) + ')';
+    ctx.lineWidth = 4;
+    roundRect(ctx, R.x - 6, R.y - 6, R.w + 12, R.h + 12, 12);
+    ctx.stroke();
+  } else ctx.fillRect(0, 0, FW, FH);
+  const below = R && R.y + R.h < 440;
+  const y = below ? Math.min(FH - 150, R.y + R.h + 20) : R ? Math.max(60, R.y - 150) : 300;
+  ctx.fillStyle = 'rgba(26,18,12,0.96)';
+  ctx.strokeStyle = '#ffd65a';
+  ctx.lineWidth = 2;
+  roundRect(ctx, 16, y, FW - 32, 120, 12);
+  ctx.fill();
+  ctx.stroke();
+  if (steps.length > 1) bigText(ctx, (G.tip.i + 1) + ' / ' + steps.length, 30, y + 16, 11, '#ffd65a', LINE, 'left');
+  wrap(st.text, 30, y + 40, FW - 60, 14);
+  btn('tipNext', FW - 130, y + 76, 104, 34, G.tip.i < steps.length - 1 ? '下一步' : '知道了', '#c8402c', '', { size: 14 });
 }
 
 // 机关台上做好的机关，自动摆上城墙 / 车：有一样的就叠上去升阶，没有就放空位
@@ -598,7 +673,7 @@ function frame() {
     G.tut.t += dt;
     if (G.tut.step >= 3 && G.tut.t > 3.5) G.tut = null;
   }
-  const tutHold = G.tut && G.tut.step < 3 && !G.bot;
+  const tutHold = (G.tut && G.tut.step < 3 && !G.bot) || !!G.tip;
   if (G.scr === 'play' && G.st && !tutHold) {
     acc += dt * G.speed;
     let n = 0;
@@ -702,7 +777,25 @@ function render() {
     if (G.scr === 'result') drawResult();
   }
   if (G.scr === 'brief') drawBrief();
+  if (G.tip) drawTip();
   ctx.restore();
+  checkTips();
+}
+
+// 什么时候弹哪张提示
+function checkTips() {
+  if (G.tip || G.bot || !G.r) return;
+  const r = G.r;
+  if (G.scr === 'play' && r.lv.mode === 'defend' && !(G.tut && G.tut.step < 3) && !G.tut) {
+    if (G.sel >= 0 && r.bench[G.sel] && r.slots.some((x) => x && x.id === r.bench[G.sel].id && x.tier === r.bench[G.sel].tier && x.tier < 4)) showTip('merge');
+    else if (canMake(r) && G.st.t > 3) showTip('combine2');
+    else if (F.spotCost(r) !== null && r.coins >= F.spotCost(r)) showTip('buySpot');
+  }
+  if (G.scr === 'play' && r.lv.mode === 'attack' && G.st.t > 0.5) showTip('attack');
+  if (G.scr === 'shop') {
+    if (r.cards) showTip('cards');
+    else showTip(r.lv.mode === 'defend' ? 'shop' : 'station');
+  }
 }
 
 function drawBg(dark) {

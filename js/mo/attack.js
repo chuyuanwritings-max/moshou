@@ -24,9 +24,9 @@ function buildLevel(st) {
   let wy = 220;
   const rush = lv.challenge === 'rush';
   for (let leg = 0; leg < lv.waves; leg++) {
-    const rowsPer = 10 + leg * 2;
+    const rowsPer = 18 + leg * 3;
     for (let k = 0; k < rowsPer; k++) {
-      const num = lv.num + leg + Math.floor(k / 6);
+      const num = lv.num + leg * 2 + Math.floor(k / 5);
       if (k % 2 === 0) {
         const h = CELL * (2 + Math.floor(R() * 2));
         if (R() < 0.6) {
@@ -34,8 +34,8 @@ function buildLevel(st) {
           const y0 = wy + 10 + R() * (h - 100);
           fences.push({ x: bx, wy0: y0, wy1: y0 + CELL * 1.4 });
         }
-        const nr = 1 + Math.floor(R() * 2);
-        for (let q = 0; q < nr; q++) items.push({ kind: 'repair', x: laneX(Math.floor(R() * 5)), wy: wy + 30 + R() * (h - 60), n: 2 + Math.floor(R() * 4), alive: true });
+        const nr = R() < 0.5 ? 1 : 0;
+        for (let q = 0; q < nr; q++) items.push({ kind: 'repair', x: laneX(Math.floor(R() * 5)), wy: wy + 30 + R() * (h - 60), n: 1 + Math.floor(R() * 3), alive: true });
         wy += h;
       } else {
         const cnt = Math.min(5, (rush ? 4 : 3) + Math.floor(R() * 3));
@@ -43,7 +43,7 @@ function buildLevel(st) {
         const vals = lanes.map(() => 1 + Math.floor(R() * num));
         if (cnt === 5) vals[vals.indexOf(Math.max.apply(null, vals))] = 1 + Math.floor(R() * Math.ceil(num / 3));
         lanes.forEach((ln, i) => {
-          const tower = k > 2 && R() < 0.12 + leg * 0.03;
+          const tower = k > 2 && R() < 0.18 + leg * 0.04;
           let type = null;
           if (!tower) for (const [ty, p] of Object.entries(lv.types || {})) if (!type && R() < p) type = ty;
           const n = tower ? Math.max(3, vals[i]) : type === 'powder' ? 1 + Math.floor(R() * 3) : vals[i];
@@ -334,7 +334,7 @@ function stepEnemies(st, dt) {
     if (b.kind === 'tower' && d > 20 && d < 430) {
       b.cd -= dt;
       if (b.cd <= 0) {
-        b.cd = 1.8;
+        b.cd = 1.5;
         st.bolts.push({ x: b.x, wy: b.wy - HALF });
         ev(st, { t: 'fire', x: b.x, wy: b.wy });
       }
