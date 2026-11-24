@@ -46,20 +46,20 @@ const STAT_CARD = {
 const TIER_DMG = [1, 1.8, 3.2, 5.5];
 const TIER_CD = [1, 0.9, 0.8, 0.7];
 const MACHINES = [
-  { id: 'nu', rng: 130, els: ['jin', 'jin'], name: '连弩', kind: 'bolt', atk: 'shoot', dmg: 8, cd: 0.6, tip: '射最近的一节 / 往前射砖', t4: '三排齐射' },
-  { id: 'teng', rng: 120, els: ['mu', 'mu'], name: '藤网', kind: 'net', atk: 'netGuard', dmg: 0, cd: 4, tip: '网住一段路，龙变慢 / 网住飞来的箭', t4: '网里每秒掉血' },
-  { id: 'han', rng: 110, els: ['shui', 'shui'], name: '寒气筒', kind: 'frost', atk: 'freezeTower', dmg: 3, cd: 3, tip: '冻住前面几节 / 冻住弩塔', t4: '冻住的节挨打 +50%' },
-  { id: 'pi', rng: 140, els: ['huo', 'huo'], name: '霹雳罐', kind: 'lob', atk: 'lobAhead', dmg: 20, cd: 2.5, r: 40, tip: '抛到最密处炸开 / 往前炸一片砖', t4: '落地留一摊火' },
-  { id: 'chui', rng: 80, els: ['tu', 'tu'], name: '千斤锤', kind: 'hammer', atk: 'chew', dmg: 35, cd: 2.2, tip: '砸最前面一节 / 啃砖快 30%', t4: '砸出震波打一排' },
-  { id: 'huolong', rng: 120, els: ['mu', 'huo'], name: '火龙车', kind: 'fireWall', atk: 'fireRow', dmg: 6, cd: 3, tip: '一道火墙横着烧 / 车前喷火墙', t4: '火墙变两道', sheng: true },
-  { id: 'rongyan', rng: 140, els: ['huo', 'tu'], name: '熔岩炮', kind: 'lob', atk: 'lobAhead', dmg: 15, cd: 2.5, r: 34, pool: 5, tip: '炸开留一摊岩浆 / 撞过的地方留岩浆', t4: '岩浆不熄', sheng: true },
-  { id: 'tiejia', rng: 80, els: ['tu', 'jin'], name: '铁甲锤', kind: 'hammer', atk: 'chew', dmg: 25, cd: 2, rage: true, tip: '城墙越破砸得越狠 / 车越破越狠', t4: '被打就还手一锤', sheng: true },
-  { id: 'leilian', rng: 130, els: ['jin', 'shui'], name: '雷链', kind: 'chain', atk: 'chainRow', dmg: 12, cd: 1.8, jumps: 4, tip: '沿龙身往后劈 4 节 / 劈一排砖', t4: '跳 10 节', sheng: true },
+  { id: 'nu', rng: 90, els: ['jin', 'jin'], name: '连弩', kind: 'bolt', atk: 'shoot', dmg: 8, cd: 0.6, tip: '射最近的一节 / 往前射砖', t4: '三排齐射' },
+  { id: 'teng', rng: 100, els: ['mu', 'mu'], name: '藤网', kind: 'net', atk: 'netGuard', dmg: 0, cd: 4, tip: '网住一段路，龙变慢 / 网住飞来的箭', t4: '网里每秒掉血' },
+  { id: 'han', rng: 65, els: ['shui', 'shui'], name: '寒气筒', kind: 'frost', atk: 'freezeTower', dmg: 3, cd: 3, tip: '冻住前面几节 / 冻住弩塔', t4: '冻住的节挨打 +50%' },
+  { id: 'pi', rng: 105, els: ['huo', 'huo'], name: '霹雳罐', kind: 'lob', atk: 'lobAhead', dmg: 20, cd: 2.5, r: 32, tip: '抛到最密处炸开 / 往前炸一片砖', t4: '落地留一摊火' },
+  { id: 'chui', rng: 70, els: ['tu', 'tu'], name: '千斤锤', kind: 'hammer', atk: 'chew', dmg: 35, cd: 2.2, tip: '砸最前面一节 / 啃砖快 30%', t4: '砸出震波打一排' },
+  { id: 'huolong', rng: 75, els: ['mu', 'huo'], name: '火龙车', kind: 'fireWall', atk: 'fireRow', dmg: 6, cd: 3, tip: '一道火墙横着烧 / 车前喷火墙', t4: '火墙变两道', sheng: true },
+  { id: 'rongyan', rng: 130, els: ['huo', 'tu'], name: '熔岩炮', kind: 'lob', atk: 'lobAhead', dmg: 15, cd: 2.5, r: 28, pool: 5, tip: '炸开留一摊岩浆 / 撞过的地方留岩浆', t4: '岩浆不熄', sheng: true },
+  { id: 'tiejia', rng: 70, els: ['tu', 'jin'], name: '铁甲锤', kind: 'hammer', atk: 'chew', dmg: 25, cd: 2, rage: true, tip: '城墙越破砸得越狠 / 车越破越狠', t4: '被打就还手一锤', sheng: true },
+  { id: 'leilian', rng: 95, els: ['jin', 'shui'], name: '雷链', kind: 'chain', atk: 'chainRow', dmg: 12, cd: 1.8, jumps: 4, tip: '沿龙身往后劈 4 节 / 劈一排砖', t4: '跳 10 节', sheng: true },
   { id: 'huichun', rng: 0, els: ['shui', 'mu'], name: '回春藤', kind: 'heal', atk: 'heal', dmg: 2, cd: 1, tip: '不打，每秒补城墙 / 补车', t4: '满血时补成护盾', sheng: true },
-  { id: 'huixuan', rng: 140, els: ['jin', 'mu'], name: '回旋刃', kind: 'blade', atk: 'shoot2', dmg: 18, cd: 1.5, tip: '飞出去飞回来，一路穿透，不怕盾 / 打两排', t4: '三把一起', cost: '回来时割掉藤网' },
-  { id: 'muren', rng: 120, els: ['mu', 'tu'], name: '机关木人', kind: 'golem', atk: 'golem', dmg: 0, cd: 6, tip: '木人拦住龙头几秒 / 替车挨打', t4: '一次两个', cost: '木人碎了不掉材料' },
-  { id: 'nizhao', rng: 120, els: ['tu', 'shui'], name: '泥沼机', kind: 'mud', atk: 'mud', dmg: 0, cd: 5, tip: '一片泥潭，陷住 2 秒 / 弩塔陷住射不了', t4: '两片泥潭', cost: '自己的车开过也变慢' },
-  { id: 'zhengqi', rng: 120, els: ['shui', 'huo'], name: '蒸汽炮', kind: 'lob', atk: 'lobAhead', dmg: 60, cd: 3, r: 50, selfHurt: 1, tip: '一炮炸开一大团 / 轰开一排砖', t4: '蒸汽留在原地', cost: '每发烫掉自己 1 血' },
+  { id: 'huixuan', rng: 110, els: ['jin', 'mu'], name: '回旋刃', kind: 'blade', atk: 'shoot2', dmg: 18, cd: 1.5, tip: '飞出去飞回来，一路穿透，不怕盾 / 打两排', t4: '三把一起', cost: '回来时割掉藤网' },
+  { id: 'muren', rng: 90, els: ['mu', 'tu'], name: '机关木人', kind: 'golem', atk: 'golem', dmg: 0, cd: 6, tip: '木人拦住龙头几秒 / 替车挨打', t4: '一次两个', cost: '木人碎了不掉材料' },
+  { id: 'nizhao', rng: 85, els: ['tu', 'shui'], name: '泥沼机', kind: 'mud', atk: 'mud', dmg: 0, cd: 5, tip: '一片泥潭，陷住 2 秒 / 弩塔陷住射不了', t4: '两片泥潭', cost: '自己的车开过也变慢' },
+  { id: 'zhengqi', rng: 120, els: ['shui', 'huo'], name: '蒸汽炮', kind: 'lob', atk: 'lobAhead', dmg: 60, cd: 3, r: 45, selfHurt: 1, tip: '一炮炸开一大团 / 轰开一排砖', t4: '蒸汽留在原地', cost: '每发烫掉自己 1 血' },
   { id: 'huochong', rng: 170, els: ['huo', 'jin'], name: '火铳', kind: 'bolt', atk: 'shoot', dmg: 45, cd: 1.2, critBonus: 20, overheat: 5, tip: '一枪很疼，常暴击 / 一枪打穿一块砖', t4: '不会过热', cost: '连打 5 枪过热停 2 秒' },
 ];
 const M = {};
