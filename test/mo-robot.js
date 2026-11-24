@@ -128,6 +128,16 @@ const fs = require('fs');
   check(await g(() => __mo.G.r.slots[2].id === 'pi' && __mo.G.r.slots[3].id === 'nu'), '场上两件不一样的拖到一起：对调位置');
   check(await g(() => __mo.G.r.slots[2].installT > 0 && __mo.G.r.slots[3].installT > 0), '波中挪过的两件都要「装」3 秒才开火');
   await snap('mo04d_安装中');
+  // 阿铸一锤：合成、叠阶攒格，满 8 格点一下砸最近的龙
+  check(await g(() => (__mo.G.r.charge || 0) >= 3), '合成、叠阶都给阿铸攒能量（现在 ' + (await g(() => __mo.G.r.charge)) + ' 格）');
+  await g(() => { __mo.G.r.charge = 8; __mo.G.tip = null; });
+  await page.waitForTimeout(200);
+  const hp0 = await g(() => __mo.G.st.dragons.reduce((a, d) => a + d.segs.filter((x) => x.alive).reduce((b, x) => b + x.hp, 0), 0));
+  await tapBtn('smash');
+  await page.waitForTimeout(100);
+  const hp1 = await g(() => __mo.G.st.dragons.reduce((a, d) => a + d.segs.filter((x) => x.alive).reduce((b, x) => b + x.hp, 0), 0));
+  check((await g(() => __mo.G.r.charge)) === 0 && hp1 < hp0, '满了点「锤」：阿铸一锤砸最近的龙，能量清零');
+  await snap('mo04e_阿铸一锤');
   // 打的时候的引导卡都看过了（免得加速时停住）
   await g(() => { const t = __mo.meta.tips || (__mo.meta.tips = {}); ['combine2', 'merge', 'buySpot', 'recipes'].forEach((k) => (t[k] = 1)); __mo.G.tip = null; });
   await page.waitForTimeout(800);

@@ -152,6 +152,16 @@ function blockAhead(st, x, range, skip) {
   return best;
 }
 
+// 阿铸一锤（进攻）：砸碎车前面一大片砖（也砸弩塔），城门挨一下狠的
+function smash(st) {
+  const hits = st.blocks.filter((b) => b.alive && b.wy - st.head.wy > -10 && b.wy - st.head.wy < 260);
+  if (!hits.length) return false;
+  const dmg = 8 + st.leg * 3;
+  hits.forEach((b) => hurt(st, b, b.kind === 'gate' ? 30 : dmg, 'smash'));
+  ev(st, { t: 'smash', x: st.head.x, wy: st.head.wy + 120 });
+  return true;
+}
+
 function steer(st, dt) {
   const h = st.head;
   let nx = h.x + clamp(clamp(st.targetX, 18, 342) - h.x, -1100 * dt, 1100 * dt);
@@ -423,4 +433,4 @@ function botX(st) {
   return laneX(best);
 }
 
-module.exports = { newAttack, step, nextWave, segments, bodyLen, botX, laneX, HALF, HEAD_Y, HEAD_R, CELL, BLOCK };
+module.exports = { smash, newAttack, step, nextWave, segments, bodyLen, botX, laneX, HALF, HEAD_Y, HEAD_R, CELL, BLOCK };

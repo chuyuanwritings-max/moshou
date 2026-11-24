@@ -582,6 +582,25 @@ function botX(st) {
   return best ? segXY(st, best).x : D.FIELD.w / 2;
 }
 
+// 阿铸一锤（Cc 11-24 定）：砸离城门最近的那条龙——前 5 节各吃一大锤，整条停 2 秒
+function smash(st) {
+  const r = st.r;
+  let best = null;
+  for (const d of st.dragons) {
+    const h = alive(d)[0];
+    if (h && h.s > -5 && (!best || h.s > alive(best)[0].s)) best = d;
+  }
+  if (!best) return false;
+  const dmg = (7 + r.wave * 2.2) * r.lv.hp * 1.25 * 3;
+  const segs = alive(best).filter((g) => g.s > -5).slice(0, 5);
+  const p = segXY(st, segs[0]);
+  best.blockT = Math.max(best.blockT, 2);
+  CUR = null;
+  segs.forEach((g) => hit(st, g, best, dmg, { noCrit: true }));
+  ev(st, { t: 'smash', x: p.x, y: p.y });
+  return true;
+}
+
 // 下一波预告：几条龙、每条大约几节、夹什么兵种节、是不是 Boss（和 step / spawnDragon 同一套算法）
 function previewWave(r) {
   const D_ = D.WAVE_SEC[Math.min(r.wave, D.WAVE_SEC.length - 1)];
@@ -607,4 +626,4 @@ function buySpot(r) {
   return true;
 }
 
-module.exports = { previewWave, spotCost, buySpot, newDefend, step, nextWave, slotPos, rangeOf, segXY, alive, botX, SPOTS, WALL_Y, PLAYER_Y, SEG_R, GAP };
+module.exports = { smash, previewWave, spotCost, buySpot, newDefend, step, nextWave, slotPos, rangeOf, segXY, alive, botX, SPOTS, WALL_Y, PLAYER_Y, SEG_R, GAP };

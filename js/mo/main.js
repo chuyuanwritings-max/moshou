@@ -289,6 +289,7 @@ function onTouch(type, id, px, py) {
           if (res) {
             snd(res.res === 'merge' ? 'evolve' : 'clang', 0, 0.5);
             if (res.res === 'merge') {
+              chargeUp();
               PF.vibrate(true);
               const p = G.r.lv.mode === 'defend' && G.scr === 'play' ? F.slotPos(to) : { x: FW / 2, y: G.scr === 'play' ? 540 : 120 };
               pop('叠成 ' + res.slot.tier + ' 阶！', p.x, p.y - 26, '#ffd65a', 16);
@@ -309,6 +310,7 @@ function onTouch(type, id, px, py) {
           if (j !== d.bi && canStack(a, b)) {
             b.tier += a.tier;
             G.r.bench.splice(d.bi, 1);
+            chargeUp();
             snd('evolve', 0, 0.5);
             PF.vibrate(true);
             pop('叠成 ' + b.tier + ' 阶！', FW / 2, G.scr === 'play' ? 600 : 560, '#ffd65a', 16);
@@ -429,6 +431,7 @@ function press(id) {
         G.flash = 0.15;
       } else if (mc.stacked) pop('手上的' + D.M[mc.id].name + '叠成 ' + mc.tier + ' 阶', FW / 2, G.scr === 'play' ? 580 : 520, '#ffd65a', 14);
       tutAdvance('combine');
+      chargeUp();
       G.bagua = { t: 0, a0: G.baguaAng || 0, gold: lucky };
       PF.vibrate(true);
       if (lucky && typeof setTimeout === 'function') setTimeout(() => PF.vibrate(true), 120);
@@ -449,6 +452,17 @@ function press(id) {
   } else if (id.startsWith('tray')) {
     const i = +id.slice(4);
     G.sel = G.sel === i ? -1 : i;
+  } else if (id === 'smash') {
+    if (G.scr !== 'play') return;
+    if ((r.charge || 0) < CHARGE_MAX) {
+      pop('还差 ' + (CHARGE_MAX - (r.charge || 0)) + ' 格：合成、叠阶都攒', smashPos().x - 60, smashPos().y - 34, '#cbb8a8', 12);
+      return;
+    }
+    if (S().smash(G.st)) {
+      r.charge = 0;
+      azSwing(() => {});
+      handleEvents();
+    } else pop(r.lv.mode === 'defend' ? '路上还没有龙' : '前面没有砖', smashPos().x - 40, smashPos().y - 34, '#cbb8a8', 13);
   } else if (id === 'buySpot') {
     if (F.buySpot(r)) {
       snd('upgrade', 0, 0.6);
@@ -473,6 +487,7 @@ function press(id) {
           if (back) back.installT = INSTALL_SEC;
         }
         snd(res.res === 'merge' ? 'evolve' : 'clang', 0, 0.5);
+        if (res.res === 'merge') chargeUp();
         const p = F.slotPos(si);
         pop(res.res === 'merge' ? '叠成 ' + res.slot.tier + ' 阶！' : '放下 ' + D.M[res.slot.id].name, p.x, p.y - 26, '#ffd65a', 15);
         tutAdvance('place');
@@ -488,6 +503,7 @@ function press(id) {
       else if (res && res.full) pop('已经满阶（最高 4 阶）', FW / 2, 300, '#ff9a6a', 15);
       else if (res) {
         snd(res.res === 'merge' ? 'evolve' : 'clang', 0, 0.5);
+        if (res.res === 'merge') chargeUp();
         if (res.res === 'merge') pop('合成 ' + D.M[res.slot.id].name + ' ' + res.slot.tier + ' 阶！', FW / 2, 120, '#ffd65a', 18);
       }
       G.sel = -1;
@@ -607,6 +623,7 @@ const TIPS = {
   recipes: [{ text: '不一样的元素也能合！比如木 + 火 = 火龙车、金 + 水 = 雷链。能合的会直接列出来；全部组合点「合成表」看', target: 'make_*|recipes' }],
   merge: [{ text: '手上这件和场上某件同名！把它拖到标着「叠↑」的点位（进攻是车格），阶数相加（最高 4 阶），打得更狠。场上的机关也能直接拖到另一件一样的上面叠', target: 'spot*|slot*' }],
   mergeShop: [{ text: '手上这件和上面某格同名！把它拖到标着「叠」的格子，阶数相加（最高 4 阶）', target: 'slot*' }],
+  smash: [{ text: '阿铸攒满了！每合一次、叠一次都会给他攒一格。点他身上的锤子：砸离城门最近的龙，整条停 2 秒（进攻是砸碎车前面一片砖）', target: 'smash' }],
   install: [{ text: '打的时候挪了位置：机关要先「装」3 秒（看那一圈转满）才开火。所以先想好摆哪；波间挪不用等', target: 'spot*|slot*' }],
   buySpot: [{ text: '铜钱够了：点「修」开一个新点位，多放一件机关', target: 'buySpot' }],
   cards: [{ text: '升级了！挑一个属性，这一关一直有效。圆圈的颜色就是五行', target: 'card*' }],
@@ -764,6 +781,20 @@ function handleEvents() {
         if (e.kind === 'tower') pop('拆了弩塔！', x, y - 30, '#ffb74a', 15);
         break;
       }
+      case 'smash':
+        // 阿铸一锤：大震、白闪、顿一下
+        G.shake = Math.max(G.shake, 16);
+        G.flash = 0.2;
+        G.flashCol = '#ffffff';
+        G.hitstop = Math.max(G.hitstop, 0.15);
+        sparks(x, y, 28, '#ffd65a');
+        chunks(x, y, 12, '#c9933a', 1.4);
+        G.fx.push({ k: 'ring', x, y, R: 70, t: 0, life: 0.35 });
+        pop('阿铸一锤！', x, y - 74, '#ffd65a', 24);
+        snd('boom', 0, 0.8);
+        snd('thud', 0, 0.7);
+        PF.vibrate(true);
+        break;
       case 'dragonDown':
         // 整条龙碎光：慢一下 + 大字 + 奖励
         G.hitstop = Math.max(G.hitstop, 0.3);
@@ -963,6 +994,7 @@ function frame() {
       acc -= 1 / 60;
       if (G.r.lv.mode === 'attack') G.st.targetX = S().botX(G.st);
       if (G.bot && Math.random() < 0.02) botCombine();
+      if (G.bot && (G.r.charge || 0) >= CHARGE_MAX) press('smash');
       S().step(G.st, 1 / 60);
       handleEvents();
     }
@@ -1062,6 +1094,7 @@ function render() {
     ctx.restore();
     drawHud();
     if (G.scr === 'play') drawLiveBench();
+    if (G.scr === 'play') drawSmashBtn();
     if (G.tut && G.scr === 'play') drawTut();
     if (G.scr === 'shop') drawShop();
     if (G.scr === 'result') drawResult();
@@ -1089,6 +1122,7 @@ function checkTips() {
       return showTip('merge');
     }
     if (!seen('combine2') && mk.length && G.st.t > 3) return showTip('combine2');
+    if (!seen('smash') && (r.charge || 0) >= CHARGE_MAX) return showTip('smash');
     if (r.lv.mode === 'defend' && !seen('buySpot') && F.spotCost(r) !== null && r.coins >= F.spotCost(r)) return showTip('buySpot');
   }
   if (G.scr === 'play' && r.lv.mode === 'attack' && G.st.t > 0.5) showTip('attack');
@@ -1112,6 +1146,56 @@ function drawBg(dark) {
   }
   ctx.fillStyle = 'rgba(10,6,4,' + dark + ')';
   ctx.fillRect(0, 0, FW, FH);
+}
+
+// —— 阿铸一锤（Cc 11-24 定）：每合成一次、叠阶一次攒一格，8 格满了点一下砸 ——
+const CHARGE_MAX = 8;
+function chargeUp() {
+  const r = G.r;
+  if (!r) return;
+  const before = r.charge || 0;
+  r.charge = Math.min(CHARGE_MAX, before + 1);
+  if (r.charge === CHARGE_MAX && before < CHARGE_MAX) {
+    snd('upgrade', 0, 0.6);
+    const b = smashPos();
+    pop('阿铸攒满了！', b.x - 30, b.y - 36, '#ffd65a', 15);
+  }
+}
+const smashPos = () => (G.r.lv.mode === 'defend' ? { x: 330, y: 552 } : { x: 330, y: 518 });
+function drawSmashBtn() {
+  const r = G.r;
+  const c = r.charge || 0;
+  const { x, y } = smashPos();
+  const R = 22;
+  const full = c >= CHARGE_MAX;
+  G.btns.push({ id: 'smash', x: x - R - 4, y: y - R - 4, w: R * 2 + 8, h: R * 2 + 8 });
+  if (full) {
+    const k = 0.5 + 0.5 * Math.sin(G.t * 8);
+    ctx.fillStyle = 'rgba(255,214,90,' + (0.25 + 0.35 * k) + ')';
+    ctx.beginPath();
+    ctx.arc(x, y, R + 8 + k * 4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.fillStyle = full ? '#c8402c' : 'rgba(30,22,16,0.85)';
+  ctx.strokeStyle = LINE;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(x, y, R, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  // 8 格能量：一圈小弧
+  for (let i = 0; i < CHARGE_MAX; i++) {
+    const a0 = -Math.PI / 2 + (i / CHARGE_MAX) * Math.PI * 2 + 0.06;
+    const a1 = -Math.PI / 2 + ((i + 1) / CHARGE_MAX) * Math.PI * 2 - 0.06;
+    ctx.strokeStyle = i < c ? '#ffd65a' : 'rgba(255,255,255,0.18)';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(x, y, R + 3, a0, a1);
+    ctx.stroke();
+  }
+  bigText(ctx, '锤', x, y - (full ? 4 : 0), full ? 17 : 15, full ? '#fff8e6' : '#cbb8a8', LINE);
+  if (full) bigText(ctx, '点！', x, y + 12, 10, '#ffe9b0', LINE);
+  else bigText(ctx, c + '/' + CHARGE_MAX, x, y + R + 12, 9, '#cbb8a8', LINE);
 }
 
 // 波中挪过的机关：压暗 + 一圈进度 +「装」字，转满才开火
