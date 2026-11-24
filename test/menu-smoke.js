@@ -24,7 +24,7 @@ const fs = require('fs');
   await tap(180, M.cards[1].y + 40);
   await page.waitForTimeout(600);
   check(await g(() => typeof __ram !== 'undefined' && __ram.G.mode === 'play'), '点 A 卡进机关龙');
-  await g(() => { __ram.G.st.len = 1; });
+  await g(() => { const st = __ram.G.st; st.len = 1; st.items.forEach((i) => { if (i.kind === 'chest') i.alive = false; }); if (__ram.G.cs) __ram.G.cs.skip(); });
   await page.waitForFunction(() => __ram.G.mode === 'result', null, { timeout: 30000 });
   await page.waitForTimeout(400);
   await page.screenshot({ path: path.join(shots, 'm2_A结算.png') });
