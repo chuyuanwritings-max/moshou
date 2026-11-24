@@ -90,7 +90,8 @@
     const active = [];      // 正在播的特效
     const tracks = [];      // 正在走的补间
     let cycle = null;       // 连打
-    const cam = { scale: 1, fx: 0.5, fy: 0.5, anim: null };
+    // ox/oy：镜头在大图上平移（单位＝屏宽/屏高），pan：正在走的平移
+    const cam = { scale: 1, fx: 0.5, fy: 0.5, anim: null, ox: 0, oy: 0, pan: null };
 
     // ---------- 节拍进入：起补间、换图、开特效 ----------
     function enterBeat(i, silent) {
@@ -119,7 +120,7 @@
       active.length = 0;
       tracks.length = 0;
       cycle = null;
-      cam.scale = 1; cam.anim = null; cam.fx = 0.5; cam.fy = 0.5;
+      cam.scale = 1; cam.anim = null; cam.fx = 0.5; cam.fy = 0.5; cam.ox = 0; cam.oy = 0; cam.pan = null;
       if (mode === 'all' || mode === true) {
         for (const id in layers) Object.assign(layers[id], base[id]);
       }
@@ -161,9 +162,17 @@
           break;
         }
         case 'camera':
-          cam.anim = { t0: fx.t0, steps: fx.steps, stepDur: fx.stepDur || 3, from: cam.scale, to: fx.to,
-                       dur: fx.dur || 0, ease: fx.ease || (fx.steps ? 'step' : 'out') };
+          if (fx.steps || fx.to != null)
+            cam.anim = { t0: fx.t0, steps: fx.steps, stepDur: fx.stepDur || 3, from: cam.scale, to: fx.to,
+                         dur: fx.dur || 0, ease: fx.ease || (fx.steps ? 'step' : 'out') };
           if (fx.focus) { cam.fx = fx.focus[0]; cam.fy = fx.focus[1]; }
+          // 运镜：镜头框在大图上移动。pan:[x,y] 是镜头中心偏离屏幕中心多少（屏宽/屏高为单位）；
+          // panDur 为 0 就是硬切到那一块（Flash 式「啪」地切过去）
+          if (fx.pan) {
+            const pd = fx.panDur != null ? fx.panDur : (fx.dur || 0);
+            if (pd > 0) cam.pan = { t0: fx.t0, from: [cam.ox, cam.oy], to: fx.pan, dur: pd, ease: fx.panEase || 'inOut' };
+            else { cam.ox = fx.pan[0]; cam.oy = fx.pan[1]; cam.pan = null; }
+          }
           return; // 不进 active
         case 'sfx':
           onSfx(fx.name);
@@ -212,6 +221,11 @@
           cam.scale = lerp(a.from, a.to, (EASE[a.ease] || EASE.out)(clamp(lt / a.dur, 0, 1)));
           if (lt >= a.dur) cam.anim = null;
         } else { cam.scale = a.to; cam.anim = null; }
+      }
+      if (cam.pan) {
+        const a = cam.pan, p = clamp((frame - a.t0) / a.dur, 0, 1), e = (EASE[a.ease] || EASE.inOut)(p);
+        cam.ox = lerp(a.from[0], a.to[0], e); cam.oy = lerp(a.from[1], a.to[1], e);
+        if (p >= 1) cam.pan = null;
       }
       // 粒子物理、过期特效
       for (let i = active.length - 1; i >= 0; i--) {
@@ -495,7 +509,7 @@
         shx += (r() - 0.5) * 2 * (fx.amp || 6) * k; shy += (r() - 0.5) * 2 * (fx.amp || 6) * k;
       }
       const cx = cam.fx * W, cy = cam.fy * H;
-      ctx.translate(cx + shx, cy + shy); ctx.scale(cam.scale, cam.scale); ctx.translate(-cx, -cy);
+      ctx.translate(cx + shx, cy + shy); ctx.scale(cam.scale, cam.scale); ctx.translate(-cx - cam.ox * W, -cy - cam.oy * H);
       // 图层和世界特效按 z 排序
       const items = [];
       for (const id in layers) items.push({ z: layers[id].z, L: layers[id] });
@@ -526,7 +540,7 @@
       if (done) return;
       // 落到最终状态：快进全部节拍，清掉特效，立即结束
       jumpTo(beats.length);
-      active.length = 0; cam.scale = 1; cam.anim = null;
+      active.length = 0; cam.scale = 1; cam.anim = null; cam.ox = 0; cam.oy = 0; cam.pan = null;
       frame = total;
       finish();
     }

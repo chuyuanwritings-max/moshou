@@ -381,7 +381,52 @@ function chapter(ctx, o) {
   return start(ctx, tl, images, o.onEnd, o.sfx);
 }
 
-module.exports = { evolve, victory, chapter, W, H, seen };
+// F 运镜大图 → 每关开局：镜头摇过边城全景，停一下，「啪」地硬切推到这一关的敌人（Boss 关推到 Boss），出字
+// 现在用竖图 bg_city 横着裁一条拼成 3.6 屏宽的全景（等 MJ 出 2:1 横幅再换）。敌人用 o.drawFocus 画在全景上。
+const PANO_W = 1296;
+const PANO_H = 720;
+const FOCUS = [0.92, -0.06]; // 和模板 F 里硬切的 pan 一致：镜头中心 = 屏幕中心 + (0.92 屏宽, -0.06 屏高)
+function panorama(o) {
+  return canvas(PANO_W, PANO_H, (g) => {
+    const img = o.img;
+    if (img && img.ok) {
+      const sc = PANO_W / img.width;
+      const h = img.height * sc;
+      const cy = h * 0.55; // 城墙、楼阁那一条
+      // 按原图坐标裁一条：起点 y = (cy - 全景高/2) / 缩放，高 = 全景高 / 缩放
+      g.drawImage(img, 0, (cy - PANO_H / 2) / sc, img.width, PANO_H / sc, 0, 0, PANO_W, PANO_H);
+    } else {
+      const gr = g.createLinearGradient(0, 0, 0, PANO_H);
+      gr.addColorStop(0, '#5a3a1e');
+      gr.addColorStop(1, '#1a120c');
+      g.fillStyle = gr;
+      g.fillRect(0, 0, PANO_W, PANO_H);
+    }
+    // 黄昏压一层暖色
+    g.fillStyle = 'rgba(60,24,8,0.25)';
+    g.fillRect(0, 0, PANO_W, PANO_H);
+    // 敌人画在镜头最后停住的地方
+    const fx = PANO_W / 2 + FOCUS[0] * W;
+    const fy = PANO_H / 2 + FOCUS[1] * H;
+    if (o.drawFocus) o.drawFocus(g, fx, fy);
+  });
+}
+function levelPan(ctx, o) {
+  const tl = clone(T.pan);
+  tl.key = '_lv' + o.id;
+  tl.beats.forEach((b) => {
+    (b.fx || []).forEach((f) => {
+      if (f.fx === 'text' && f.size >= 30) f.str = o.title;
+      else if (f.fx === 'text' && f.str) {
+        f.str = o.place;
+        f.size = 17;
+      }
+    });
+  });
+  return start(ctx, tl, { panorama: panorama(o) }, o.onEnd, o.sfx);
+}
+
+module.exports = { evolve, victory, chapter, levelPan, W, H, seen };
 
 });
 __def("js/cutscene/cutscene.js", function (module, exports, require) {
@@ -477,7 +522,8 @@ __def("js/cutscene/cutscene.js", function (module, exports, require) {
     const active = [];      // 正在播的特效
     const tracks = [];      // 正在走的补间
     let cycle = null;       // 连打
-    const cam = { scale: 1, fx: 0.5, fy: 0.5, anim: null };
+    // ox/oy：镜头在大图上平移（单位＝屏宽/屏高），pan：正在走的平移
+    const cam = { scale: 1, fx: 0.5, fy: 0.5, anim: null, ox: 0, oy: 0, pan: null };
 
     // ---------- 节拍进入：起补间、换图、开特效 ----------
     function enterBeat(i, silent) {
@@ -506,7 +552,7 @@ __def("js/cutscene/cutscene.js", function (module, exports, require) {
       active.length = 0;
       tracks.length = 0;
       cycle = null;
-      cam.scale = 1; cam.anim = null; cam.fx = 0.5; cam.fy = 0.5;
+      cam.scale = 1; cam.anim = null; cam.fx = 0.5; cam.fy = 0.5; cam.ox = 0; cam.oy = 0; cam.pan = null;
       if (mode === 'all' || mode === true) {
         for (const id in layers) Object.assign(layers[id], base[id]);
       }
@@ -548,9 +594,17 @@ __def("js/cutscene/cutscene.js", function (module, exports, require) {
           break;
         }
         case 'camera':
-          cam.anim = { t0: fx.t0, steps: fx.steps, stepDur: fx.stepDur || 3, from: cam.scale, to: fx.to,
-                       dur: fx.dur || 0, ease: fx.ease || (fx.steps ? 'step' : 'out') };
+          if (fx.steps || fx.to != null)
+            cam.anim = { t0: fx.t0, steps: fx.steps, stepDur: fx.stepDur || 3, from: cam.scale, to: fx.to,
+                         dur: fx.dur || 0, ease: fx.ease || (fx.steps ? 'step' : 'out') };
           if (fx.focus) { cam.fx = fx.focus[0]; cam.fy = fx.focus[1]; }
+          // 运镜：镜头框在大图上移动。pan:[x,y] 是镜头中心偏离屏幕中心多少（屏宽/屏高为单位）；
+          // panDur 为 0 就是硬切到那一块（Flash 式「啪」地切过去）
+          if (fx.pan) {
+            const pd = fx.panDur != null ? fx.panDur : (fx.dur || 0);
+            if (pd > 0) cam.pan = { t0: fx.t0, from: [cam.ox, cam.oy], to: fx.pan, dur: pd, ease: fx.panEase || 'inOut' };
+            else { cam.ox = fx.pan[0]; cam.oy = fx.pan[1]; cam.pan = null; }
+          }
           return; // 不进 active
         case 'sfx':
           onSfx(fx.name);
@@ -599,6 +653,11 @@ __def("js/cutscene/cutscene.js", function (module, exports, require) {
           cam.scale = lerp(a.from, a.to, (EASE[a.ease] || EASE.out)(clamp(lt / a.dur, 0, 1)));
           if (lt >= a.dur) cam.anim = null;
         } else { cam.scale = a.to; cam.anim = null; }
+      }
+      if (cam.pan) {
+        const a = cam.pan, p = clamp((frame - a.t0) / a.dur, 0, 1), e = (EASE[a.ease] || EASE.inOut)(p);
+        cam.ox = lerp(a.from[0], a.to[0], e); cam.oy = lerp(a.from[1], a.to[1], e);
+        if (p >= 1) cam.pan = null;
       }
       // 粒子物理、过期特效
       for (let i = active.length - 1; i >= 0; i--) {
@@ -882,7 +941,7 @@ __def("js/cutscene/cutscene.js", function (module, exports, require) {
         shx += (r() - 0.5) * 2 * (fx.amp || 6) * k; shy += (r() - 0.5) * 2 * (fx.amp || 6) * k;
       }
       const cx = cam.fx * W, cy = cam.fy * H;
-      ctx.translate(cx + shx, cy + shy); ctx.scale(cam.scale, cam.scale); ctx.translate(-cx, -cy);
+      ctx.translate(cx + shx, cy + shy); ctx.scale(cam.scale, cam.scale); ctx.translate(-cx - cam.ox * W, -cy - cam.oy * H);
       // 图层和世界特效按 z 排序
       const items = [];
       for (const id in layers) items.push({ z: layers[id].z, L: layers[id] });
@@ -913,7 +972,7 @@ __def("js/cutscene/cutscene.js", function (module, exports, require) {
       if (done) return;
       // 落到最终状态：快进全部节拍，清掉特效，立即结束
       jumpTo(beats.length);
-      active.length = 0; cam.scale = 1; cam.anim = null;
+      active.length = 0; cam.scale = 1; cam.anim = null; cam.ox = 0; cam.oy = 0; cam.pan = null;
       frame = total;
       finish();
     }
@@ -1105,6 +1164,32 @@ __def("js/cutscene/templates.js", function (module, exports, require) {
         fx: [{ at: 0, fx: 'fade', from: 1, to: 0, dur: 20 },
              { at: 12, fx: 'text', str: '灯一亮，客人就来了', in: 'fade', inDur: 16, pos: [0.5, 0.86], size: 16, strokeWidth: 4, dur: 78 }] },
       { id: 'out', type: 'out', dur: 8, fx: [{ at: 0, fx: 'flash', alpha: 1, hold: 3, decay: 5 }] },
+    ],
+  };
+
+  // F 运镜大图（Flash 式镜头）：一张比屏幕宽得多的大图，镜头框在上面慢摇过去，
+  // 停一下，再「啪」地硬切推到一个细节上（闪 + 震），亮相出字。图只要 1 张横幅大图（2:1 左右）。
+  // pan 的单位是屏宽：大图 2:1、竖屏 375×667 时，左右能摇的范围约 ±1.2。
+  T.pan = {
+    id: 'pan', name: 'F 运镜大图', fps: 60, bg: '#000000', short: { from: 'punch' },
+    layers: [{ id: 'pano', img: 'panorama', fit: 'cover', z: 0 }],
+    beats: [
+      { id: 'black', type: 'darkIn', dur: 24,
+        fx: [{ at: 0, fx: 'camera', pan: [-1.0, 0], panDur: 0, to: 1.1 },
+             { at: 0, fx: 'fade', from: 1, to: 0, dur: 24 }] },
+      { id: 'sweep', type: 'hold', dur: 100,
+        fx: [{ at: 0, fx: 'camera', pan: [0.55, 0], panDur: 100, panEase: 'inOut' },
+             { at: 20, fx: 'text', str: '边城 · 黄昏', in: 'fade', inDur: 16, pos: [0.5, 0.16], size: 22, strokeWidth: 4, dur: 70 }] },
+      { id: 'still', type: 'hold', dur: 24 },
+      { id: 'punch', type: 'strike', dur: 4,
+        fx: [{ at: 0, fx: 'camera', pan: [0.92, -0.06], panDur: 0, steps: [1.5, 1.9, 2.3], stepDur: 1 },
+             { at: 0, fx: 'flash', alpha: 0.8, hold: 1, decay: 10 },
+             { at: 0, fx: 'shake', amp: 7, dur: 10 },
+             { at: 0, fx: 'sfx', name: 'impact' }] },
+      { id: 'pose', type: 'pose', dur: 70,
+        fx: [{ at: 0, fx: 'camera', to: 2.45, dur: 70, ease: 'linear' },
+             { at: 4, fx: 'text', str: '龙来了！', in: 'pop', inDur: 10, pos: [0.5, 0.8], size: 34, strokeWidth: 6, dur: 66 }] },
+      { id: 'out', type: 'out', dur: 14, fx: [{ at: 0, fx: 'fade', from: 0, to: 1, dur: 14 }] },
     ],
   };
 
@@ -6418,6 +6503,7 @@ const B = require('./build.js');
 const F = require('./defend.js');
 const A = require('./attack.js');
 const RD = require('../ram/draw.js');
+const CS = require('../cs.js');
 const RC = require('../ram/config.js');
 const { clamp, easeOutBack, roundRect, bigText, mix } = require('../util.js');
 
@@ -6553,6 +6639,65 @@ function startLevel(i) {
   meta.seenTeach[lv.id] = 1;
   saveMeta();
   handleEvents();
+  // 开局运镜（模板 F）：摇过边城，硬切推到这一关的敌人；同一关第二次起只播短版
+  G.cs = null;
+  if (!G.bot) {
+    G.cs = CS.levelPan(ctx, {
+      id: lv.id,
+      img: IMG.bg,
+      place: lv.id + ' · ' + lv.story,
+      title: lv.mode === 'defend' ? (lv.boss ? '铁头龙来了！' : '机关长龙来了！') : lv.boss ? '弩车守着城门！' : '撞开城门！',
+      drawFocus: (g, x, y) => drawPanFocus(g, x, y, lv),
+      sfx: (n) => snd(n === 'impact' ? 'boom' : n, 0, 0.6),
+      onEnd: () => {
+        G.cs = null;
+        G.banner = 1.4;
+      },
+    });
+  }
+}
+// 运镜最后推到的那个敌人：守城画龙（Boss 关大一号、发红光），进攻画要撞的城门
+function drawPanFocus(g, x, y, lv) {
+  g.save();
+  g.translate(x, y);
+  if (lv.mode === 'defend') {
+    const k = lv.boss ? 2.1 : 1.6;
+    if (lv.boss) {
+      const gr = g.createRadialGradient(0, 0, 4, 0, 0, 90);
+      gr.addColorStop(0, 'rgba(255,80,40,0.7)');
+      gr.addColorStop(1, 'rgba(255,80,40,0)');
+      g.fillStyle = gr;
+      g.fillRect(-100, -100, 200, 200);
+    }
+    g.scale(k, k);
+    for (let i = 7; i >= 1; i--) RD.drawCar(g, -i * 22, Math.sin(i * 0.9) * 6, Math.PI / 2, i, 0, 0);
+    RD.drawHead(g, 0, 0, Math.PI / 2, 1, 0, lv.boss ? 1 : 0);
+  } else {
+    // 城门：砖墙 + 拱门 + 门上的数字
+    g.fillStyle = '#7a5a3a';
+    g.strokeStyle = LINE;
+    g.lineWidth = 4;
+    g.fillRect(-90, -70, 180, 140);
+    g.strokeRect(-90, -70, 180, 140);
+    g.strokeStyle = 'rgba(30,20,12,0.5)';
+    g.lineWidth = 2;
+    for (let r = 0; r < 7; r++) for (let c = 0; c < 6; c++) g.strokeRect(-90 + c * 30 + (r % 2 ? 15 : 0), -70 + r * 20, 30, 20);
+    g.fillStyle = '#2a1a10';
+    g.beginPath();
+    g.moveTo(-36, 70);
+    g.lineTo(-36, 0);
+    g.arc(0, 0, 36, Math.PI, 0);
+    g.lineTo(36, 70);
+    g.closePath();
+    g.fill();
+    if (lv.boss) {
+      g.fillStyle = '#c8402c';
+      g.fillRect(-20, -100, 40, 26);
+      g.strokeStyle = LINE;
+      g.strokeRect(-20, -100, 40, 26);
+    }
+  }
+  g.restore();
 }
 const S = () => (G.r.lv.mode === 'defend' ? F : A);
 
@@ -6576,6 +6721,10 @@ function btn(id, x, y, w, h, label, col, sub, opt) {
 }
 
 function onTouch(type, id, px, py) {
+  if (type === 'down' && G.cs) {
+    G.cs.skip(); // 点一下跳过开局运镜
+    return;
+  }
   const [fx, fy] = toField(px, py);
   if (type === 'down') {
     for (let i = G.btns.length - 1; i >= 0; i--) {
@@ -7284,7 +7433,11 @@ function frame() {
     G.tut.t += dt;
     if (G.tut.step >= 2 && G.tut.t > 3.5) G.tut = null;
   }
-  const tutHold = (G.tut && G.tut.step < 2 && !G.bot) || !!G.tip || !!G.recipesOpen;
+  if (G.cs) {
+    if (G.bot) G.cs.skip();
+    else G.cs.update(dt * 1000);
+  }
+  const tutHold = (G.tut && G.tut.step < 2 && !G.bot) || !!G.tip || !!G.recipesOpen || !!G.cs;
   if (G.scr === 'play' && G.st && !tutHold) {
     acc += dt * G.speed;
     let n = 0;
@@ -7399,13 +7552,14 @@ function render() {
   if (G.scr === 'play' || G.scr === 'shop') drawDragM();
   if (G.recipesOpen) drawRecipes();
   if (G.tip) drawTip();
+  if (G.cs) G.cs.draw();
   ctx.restore();
   checkTips();
 }
 
 // 什么时候弹哪张提示
 function checkTips() {
-  if (G.tip || G.bot || !G.r) return;
+  if (G.tip || G.bot || !G.r || G.cs) return;
   const r = G.r;
   const seen = (k) => meta.tips && meta.tips[k];
   const stackIdx = () => r.bench.findIndex((m) => r.slots.some((x) => canStack(x, m)));

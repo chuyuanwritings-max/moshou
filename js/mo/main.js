@@ -7,6 +7,7 @@ const B = require('./build.js');
 const F = require('./defend.js');
 const A = require('./attack.js');
 const RD = require('../ram/draw.js');
+const CS = require('../cs.js');
 const RC = require('../ram/config.js');
 const { clamp, easeOutBack, roundRect, bigText, mix } = require('../util.js');
 
@@ -142,6 +143,65 @@ function startLevel(i) {
   meta.seenTeach[lv.id] = 1;
   saveMeta();
   handleEvents();
+  // 开局运镜（模板 F）：摇过边城，硬切推到这一关的敌人；同一关第二次起只播短版
+  G.cs = null;
+  if (!G.bot) {
+    G.cs = CS.levelPan(ctx, {
+      id: lv.id,
+      img: IMG.bg,
+      place: lv.id + ' · ' + lv.story,
+      title: lv.mode === 'defend' ? (lv.boss ? '铁头龙来了！' : '机关长龙来了！') : lv.boss ? '弩车守着城门！' : '撞开城门！',
+      drawFocus: (g, x, y) => drawPanFocus(g, x, y, lv),
+      sfx: (n) => snd(n === 'impact' ? 'boom' : n, 0, 0.6),
+      onEnd: () => {
+        G.cs = null;
+        G.banner = 1.4;
+      },
+    });
+  }
+}
+// 运镜最后推到的那个敌人：守城画龙（Boss 关大一号、发红光），进攻画要撞的城门
+function drawPanFocus(g, x, y, lv) {
+  g.save();
+  g.translate(x, y);
+  if (lv.mode === 'defend') {
+    const k = lv.boss ? 2.1 : 1.6;
+    if (lv.boss) {
+      const gr = g.createRadialGradient(0, 0, 4, 0, 0, 90);
+      gr.addColorStop(0, 'rgba(255,80,40,0.7)');
+      gr.addColorStop(1, 'rgba(255,80,40,0)');
+      g.fillStyle = gr;
+      g.fillRect(-100, -100, 200, 200);
+    }
+    g.scale(k, k);
+    for (let i = 7; i >= 1; i--) RD.drawCar(g, -i * 22, Math.sin(i * 0.9) * 6, Math.PI / 2, i, 0, 0);
+    RD.drawHead(g, 0, 0, Math.PI / 2, 1, 0, lv.boss ? 1 : 0);
+  } else {
+    // 城门：砖墙 + 拱门 + 门上的数字
+    g.fillStyle = '#7a5a3a';
+    g.strokeStyle = LINE;
+    g.lineWidth = 4;
+    g.fillRect(-90, -70, 180, 140);
+    g.strokeRect(-90, -70, 180, 140);
+    g.strokeStyle = 'rgba(30,20,12,0.5)';
+    g.lineWidth = 2;
+    for (let r = 0; r < 7; r++) for (let c = 0; c < 6; c++) g.strokeRect(-90 + c * 30 + (r % 2 ? 15 : 0), -70 + r * 20, 30, 20);
+    g.fillStyle = '#2a1a10';
+    g.beginPath();
+    g.moveTo(-36, 70);
+    g.lineTo(-36, 0);
+    g.arc(0, 0, 36, Math.PI, 0);
+    g.lineTo(36, 70);
+    g.closePath();
+    g.fill();
+    if (lv.boss) {
+      g.fillStyle = '#c8402c';
+      g.fillRect(-20, -100, 40, 26);
+      g.strokeStyle = LINE;
+      g.strokeRect(-20, -100, 40, 26);
+    }
+  }
+  g.restore();
 }
 const S = () => (G.r.lv.mode === 'defend' ? F : A);
 
@@ -165,6 +225,10 @@ function btn(id, x, y, w, h, label, col, sub, opt) {
 }
 
 function onTouch(type, id, px, py) {
+  if (type === 'down' && G.cs) {
+    G.cs.skip(); // 点一下跳过开局运镜
+    return;
+  }
   const [fx, fy] = toField(px, py);
   if (type === 'down') {
     for (let i = G.btns.length - 1; i >= 0; i--) {
@@ -873,7 +937,11 @@ function frame() {
     G.tut.t += dt;
     if (G.tut.step >= 2 && G.tut.t > 3.5) G.tut = null;
   }
-  const tutHold = (G.tut && G.tut.step < 2 && !G.bot) || !!G.tip || !!G.recipesOpen;
+  if (G.cs) {
+    if (G.bot) G.cs.skip();
+    else G.cs.update(dt * 1000);
+  }
+  const tutHold = (G.tut && G.tut.step < 2 && !G.bot) || !!G.tip || !!G.recipesOpen || !!G.cs;
   if (G.scr === 'play' && G.st && !tutHold) {
     acc += dt * G.speed;
     let n = 0;
@@ -988,13 +1056,14 @@ function render() {
   if (G.scr === 'play' || G.scr === 'shop') drawDragM();
   if (G.recipesOpen) drawRecipes();
   if (G.tip) drawTip();
+  if (G.cs) G.cs.draw();
   ctx.restore();
   checkTips();
 }
 
 // 什么时候弹哪张提示
 function checkTips() {
-  if (G.tip || G.bot || !G.r) return;
+  if (G.tip || G.bot || !G.r || G.cs) return;
   const r = G.r;
   const seen = (k) => meta.tips && meta.tips[k];
   const stackIdx = () => r.bench.findIndex((m) => r.slots.some((x) => canStack(x, m)));

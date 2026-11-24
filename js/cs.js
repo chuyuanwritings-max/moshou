@@ -199,4 +199,49 @@ function chapter(ctx, o) {
   return start(ctx, tl, images, o.onEnd, o.sfx);
 }
 
-module.exports = { evolve, victory, chapter, W, H, seen };
+// F 运镜大图 → 每关开局：镜头摇过边城全景，停一下，「啪」地硬切推到这一关的敌人（Boss 关推到 Boss），出字
+// 现在用竖图 bg_city 横着裁一条拼成 3.6 屏宽的全景（等 MJ 出 2:1 横幅再换）。敌人用 o.drawFocus 画在全景上。
+const PANO_W = 1296;
+const PANO_H = 720;
+const FOCUS = [0.92, -0.06]; // 和模板 F 里硬切的 pan 一致：镜头中心 = 屏幕中心 + (0.92 屏宽, -0.06 屏高)
+function panorama(o) {
+  return canvas(PANO_W, PANO_H, (g) => {
+    const img = o.img;
+    if (img && img.ok) {
+      const sc = PANO_W / img.width;
+      const h = img.height * sc;
+      const cy = h * 0.55; // 城墙、楼阁那一条
+      // 按原图坐标裁一条：起点 y = (cy - 全景高/2) / 缩放，高 = 全景高 / 缩放
+      g.drawImage(img, 0, (cy - PANO_H / 2) / sc, img.width, PANO_H / sc, 0, 0, PANO_W, PANO_H);
+    } else {
+      const gr = g.createLinearGradient(0, 0, 0, PANO_H);
+      gr.addColorStop(0, '#5a3a1e');
+      gr.addColorStop(1, '#1a120c');
+      g.fillStyle = gr;
+      g.fillRect(0, 0, PANO_W, PANO_H);
+    }
+    // 黄昏压一层暖色
+    g.fillStyle = 'rgba(60,24,8,0.25)';
+    g.fillRect(0, 0, PANO_W, PANO_H);
+    // 敌人画在镜头最后停住的地方
+    const fx = PANO_W / 2 + FOCUS[0] * W;
+    const fy = PANO_H / 2 + FOCUS[1] * H;
+    if (o.drawFocus) o.drawFocus(g, fx, fy);
+  });
+}
+function levelPan(ctx, o) {
+  const tl = clone(T.pan);
+  tl.key = '_lv' + o.id;
+  tl.beats.forEach((b) => {
+    (b.fx || []).forEach((f) => {
+      if (f.fx === 'text' && f.size >= 30) f.str = o.title;
+      else if (f.fx === 'text' && f.str) {
+        f.str = o.place;
+        f.size = 17;
+      }
+    });
+  });
+  return start(ctx, tl, { panorama: panorama(o) }, o.onEnd, o.sfx);
+}
+
+module.exports = { evolve, victory, chapter, levelPan, W, H, seen };

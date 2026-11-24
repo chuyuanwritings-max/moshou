@@ -169,6 +169,32 @@
     ],
   };
 
+  // F 运镜大图（Flash 式镜头）：一张比屏幕宽得多的大图，镜头框在上面慢摇过去，
+  // 停一下，再「啪」地硬切推到一个细节上（闪 + 震），亮相出字。图只要 1 张横幅大图（2:1 左右）。
+  // pan 的单位是屏宽：大图 2:1、竖屏 375×667 时，左右能摇的范围约 ±1.2。
+  T.pan = {
+    id: 'pan', name: 'F 运镜大图', fps: 60, bg: '#000000', short: { from: 'punch' },
+    layers: [{ id: 'pano', img: 'panorama', fit: 'cover', z: 0 }],
+    beats: [
+      { id: 'black', type: 'darkIn', dur: 24,
+        fx: [{ at: 0, fx: 'camera', pan: [-1.0, 0], panDur: 0, to: 1.1 },
+             { at: 0, fx: 'fade', from: 1, to: 0, dur: 24 }] },
+      { id: 'sweep', type: 'hold', dur: 100,
+        fx: [{ at: 0, fx: 'camera', pan: [0.55, 0], panDur: 100, panEase: 'inOut' },
+             { at: 20, fx: 'text', str: '边城 · 黄昏', in: 'fade', inDur: 16, pos: [0.5, 0.16], size: 22, strokeWidth: 4, dur: 70 }] },
+      { id: 'still', type: 'hold', dur: 24 },
+      { id: 'punch', type: 'strike', dur: 4,
+        fx: [{ at: 0, fx: 'camera', pan: [0.92, -0.06], panDur: 0, steps: [1.5, 1.9, 2.3], stepDur: 1 },
+             { at: 0, fx: 'flash', alpha: 0.8, hold: 1, decay: 10 },
+             { at: 0, fx: 'shake', amp: 7, dur: 10 },
+             { at: 0, fx: 'sfx', name: 'impact' }] },
+      { id: 'pose', type: 'pose', dur: 70,
+        fx: [{ at: 0, fx: 'camera', to: 2.45, dur: 70, ease: 'linear' },
+             { at: 4, fx: 'text', str: '龙来了！', in: 'pop', inDur: 10, pos: [0.5, 0.8], size: 34, strokeWidth: 6, dur: 66 }] },
+      { id: 'out', type: 'out', dur: 14, fx: [{ at: 0, fx: 'fade', from: 0, to: 1, dur: 14 }] },
+    ],
+  };
+
   if (typeof module !== 'undefined' && module.exports) module.exports = T;
   else root.CUTSCENE_TEMPLATES = T;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
