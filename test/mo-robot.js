@@ -25,7 +25,18 @@ const fs = require('fs');
   check(await g(() => typeof __mo !== 'undefined' && __mo.G.scr === 'pick'), '第一次进来先选机关师');
   const M = await g(() => ({ scale: __mo.scale, ox: __mo.ox, oy: __mo.oy }));
   const tips = [];
+  // 先把弹出来的提示卡点掉（记下弹过哪些）
+  const dismissTips = async () => {
+    for (let k = 0; k < 8 && (await g(() => !!__mo.G.tip)); k++) {
+      tips.push(await g(() => __mo.G.tip.key));
+      const t = await g(() => __mo.G.btns.find((x) => x.id === 'tipNext'));
+      if (!t) break;
+      await page.mouse.click(M.ox + (t.x + t.w / 2) * M.scale, M.oy + (t.y + t.h / 2) * M.scale);
+      await page.waitForTimeout(80);
+    }
+  };
   const dragBtn = async (from, to) => {
+    await dismissTips();
     const a = await g((i) => __mo.G.btns.find((x) => x.id === i), from);
     const b = await g((i) => __mo.G.btns.find((x) => x.id === i), to);
     if (!a || !b) throw new Error('拖不了 ' + from + ' → ' + to);
@@ -37,14 +48,7 @@ const fs = require('fs');
     await page.waitForTimeout(120);
   };
   const tapBtn = async (id) => {
-    // 先把弹出来的提示卡点掉（记下弹过哪些）
-    for (let k = 0; k < 8 && id !== 'tipNext' && (await g(() => !!__mo.G.tip)); k++) {
-      tips.push(await g(() => __mo.G.tip.key));
-      const t = await g(() => __mo.G.btns.find((x) => x.id === 'tipNext'));
-      if (!t) break;
-      await page.mouse.click(M.ox + (t.x + t.w / 2) * M.scale, M.oy + (t.y + t.h / 2) * M.scale);
-      await page.waitForTimeout(80);
-    }
+    if (id !== 'tipNext') await dismissTips();
     const b = await g((i) => __mo.G.btns.find((x) => x.id === i), id);
     if (!b) throw new Error('找不到按钮 ' + id);
     await page.mouse.click(M.ox + (b.x + b.w / 2) * M.scale, M.oy + (b.y + b.h / 2) * M.scale);
@@ -71,6 +75,7 @@ const fs = require('fs');
   check(await g(() => __mo.G.tut && __mo.G.tut.step === 0), '第一关教学第 1 步：两个金能合，点「连弩」（龙先不动）');
   const t0 = await g(() => __mo.G.st.t);
   await snap('mo03a_教学1');
+  await g(() => { __mo.G.r.noLuck = true; }); // 测试里关掉「大成功」，阶数可预期
   await tapBtn('make_nu');
   await page.waitForTimeout(300);
   check(await g(() => __mo.G.tut.step === 1), '教学第 2 步：把连弩拖到亮着的点位');
@@ -81,6 +86,7 @@ const fs = require('fs');
   await page.waitForFunction(() => __mo.G.st.dragons.length && __mo.G.st.dragons[0].segs.some((s) => s.s > 300), null, { timeout: 15000 });
   await snap('mo03_守城');
   check(true, '龙顺着弯路爬下来');
+  await page.waitForFunction(() => !__mo.G.tut, null, { timeout: 8000 });
   // 波中合成：材料在下面的机关台，点两个金、点合 → 放在手上 → 点路边亮着的点位放下
   await g(() => { __mo.G.r.mats.jin += 4; __mo.G.r.coins += 100; });
   await page.waitForTimeout(100);
@@ -88,14 +94,14 @@ const fs = require('fs');
   await page.waitForTimeout(560);
   await snap('mo04a_阿铸挥锤');
   check(await g(() => __mo.G.az.anim === 'swing' || __mo.G.az.fired !== undefined), '点「合」：阿铸抡锤打铁（动作帧）');
-  check((await g(() => __mo.G.r.log.made)) >= 1 && (await g(() => __mo.G.scr === 'play' && __mo.G.sel >= 0)), '打的时候就能合：点「能合」里的连弩，放在手上，不暂停');
+  check((await g(() => __mo.G.r.log.made)) >= 1 && (await g(() => __mo.G.scr === 'play' && __mo.G.r.bench.length >= 1)), '打的时候就能合：点「能合」里的连弩，放在手上，不暂停');
   await page.waitForTimeout(100);
   await snap('mo04_手上有机关');
-  await tapBtn('spot2');
-  check((await g(() => __mo.G.r.slots[2] && __mo.G.r.slots[2].id === 'nu')), '点路边亮着的点位：连弩放上去');
+  await dragBtn('tray0', 'spot2');
+  check((await g(() => __mo.G.r.slots[2] && __mo.G.r.slots[2].id === 'nu')), '拖到路边亮着的点位：连弩放上去');
   await tapBtn('make_nu');
-  await tapBtn('spot2');
-  check((await g(() => __mo.G.r.slots[2].tier === 2)), '再合一件、点同一个点位：叠成 2 阶');
+  await dragBtn('tray0', 'spot2');
+  check((await g(() => __mo.G.r.slots[2].tier === 2)), '再合一件、拖到同一个点位：叠成 2 阶');
   await g(() => { __mo.G.tip = null; });
   const n0 = await g(() => __mo.G.r.slots.length);
   await tapBtn('buySpot');
@@ -172,9 +178,12 @@ const fs = require('fs');
   await g(() => { const m = __mo.G.r.mats; Object.keys(m).forEach((k) => (m[k] = 0)); m.huo = 2; });
   await page.waitForTimeout(150);
   await tapBtn('make_pi');
-  check(await g(() => __mo.G.sel >= 0 && __mo.G.r.slots[1] === null), '驿站点「霹雳罐」就合出来：放在下面，不自动装');
-  await tapBtn('slot1');
-  check(await g(() => __mo.G.r.slots[1] && __mo.G.r.slots[1].id === 'pi'), '点车上的格子：自己装上去');
+  check(await g(() => __mo.G.r.bench.some((m) => m.id === 'pi') && __mo.G.r.slots[1] === null), '驿站点「霹雳罐」就合出来：放在下面，不自动装');
+  const piI = await g(() => __mo.G.r.bench.findIndex((m) => m.id === 'pi'));
+  await g(() => { __mo.G.tip = null; });
+  await page.waitForTimeout(100);
+  await dragBtn('tray' + piI, 'slot1');
+  check(await g(() => __mo.G.r.slots[1] && __mo.G.r.slots[1].id === 'pi'), '拖到车上的格子：自己装上去');
   await page.waitForTimeout(200);
   await snap('mo11_驿站');
   await g(() => { __mo.meta.cleared['1-7'] = true; __mo.G.bot = true; __mo.startLevel(7); });

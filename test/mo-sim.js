@@ -3,9 +3,9 @@ const D = require('../js/mo/data.js');
 const B = require('../js/mo/build.js');
 const F = require('../js/mo/defend.js');
 const A = require('../js/mo/attack.js');
-const meta = { slots: 4, dragonLen: 4, cartSlots: 2, wallHp: 100, bench: 2, recipes: D.START_RECIPES.slice(), shenji: {} };
+const meta = { slots: 3, dragonLen: 4, cartSlots: 2, wallHp: 150, bench: 2, recipes: D.START_RECIPES.slice(), shenji: {} };
 
-function botWorkshop(r) {
+function botWorkshop(r, noBuy) {
   while (r.cards) B.pickCard(r, 0);
   // 能合就合：先试单一（两份一样），再试相生
   for (let guard = 0; guard < 20; guard++) {
@@ -29,11 +29,13 @@ function botWorkshop(r) {
     if (si < 0) si = r.slots.findIndex((s) => !s);
     if (si >= 0) B.place(r, bi, si);
   }
+  if (noBuy) return;
   // 买得起就买第一件道具
   for (let i = 0; i < 4; i++) if (r.shop[i] && r.shop[i].kind !== 'mat' && r.coins >= r.shop[i].price + 10) B.buy(r, i);
 }
 
-function run(li, seed, skill) {
+// live = 守城边打边合（每秒合一次、摆一次，像真人在波中操作）
+function run(li, seed, skill, live) {
   const lv = D.LEVELS[li];
   const r = B.newRun(meta, lv, 'azhu', seed);
   const S = lv.mode === 'defend' ? F : A;
@@ -47,6 +49,7 @@ function run(li, seed, skill) {
       continue;
     }
     st.targetX = skill ? S.botX(st) : 180;
+    if (live && lv.mode === 'defend' && g % 60 === 0) botWorkshop(r, true);
     S.step(st, 1 / 60);
     st.events.length = 0;
   }
@@ -54,10 +57,12 @@ function run(li, seed, skill) {
 }
 
 const N = +process.argv[2] || 40;
+const LIVE = process.argv[3] !== 'between';
+console.log(LIVE ? '【边打边合】' : '【只在波间合】');
 for (const li of [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]) {
   let w = 0, t = 0, hp = 0, made = 0, kills = 0;
   for (let i = 0; i < N; i++) {
-    const o = run(li, 1000 + i * 37, true);
+    const o = run(li, 1000 + i * 37, true, LIVE);
     w += o.win; t += o.t; hp += o.win ? o.hp : 0; made += o.made; kills += o.kills;
   }
   console.log(D.LEVELS[li].id, '过关', Math.round((w / N) * 100) + '%', '平均秒', (t / N).toFixed(0), '过关剩血', w ? Math.round((hp / w) * 100) + '%' : '-', '合机关', (made / N).toFixed(1), '碎节', (kills / N).toFixed(0));

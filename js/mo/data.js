@@ -96,7 +96,7 @@ const ITEMS = [
   { id: 'poqi', name: '破旗', tier: 1, price: 25, rule: 'poqi', desc: '城墙 / 车每少 10% 血，伤害 +3%' },
   { id: 'gang', name: '精钢刀片', tier: 2, price: 40, st: { dmg: 12 } },
   { id: 'jiu', name: '酒葫芦', tier: 2, price: 38, st: { crit: 8, hp: -10 }, two: true },
-  { id: 'luban', name: '鲁班尺', tier: 2, price: 50, rule: 'luban', desc: '合机关时 10% 机会直接高一阶' },
+  { id: 'luban', name: '鲁班尺', tier: 2, price: 50, rule: 'luban', desc: '合机关「大成功」（直接高一阶）的机会 +10%' },
   { id: 'dun', name: '盾牌', tier: 2, price: 42, rule: 'dun', desc: '每波第一次挨打不掉血' },
   { id: 'liangcang', name: '粮仓', tier: 2, price: 50, rule: 'interest', desc: '每波结束按存着的铜钱给 10% 利息（最多 15）' },
   { id: 'pofu', name: '破釜沉舟', tier: 3, price: 80, st: { dmg: 40 }, rule: 'halfHp', desc: '生命减半，伤害 +40%', two: true },
@@ -142,11 +142,11 @@ const LEVELS = [
   { id: '1-2', story: '长龙退了，城外留下一串车辙', mode: 'defend', waves: 5, hp: 1.4, len: 16, teach: '两件一样的机关叠在一起，升一阶' },
   { id: '1-3', story: '顺着车辙找到公输家的前哨', mode: 'attack', car: 'small', waves: 4, num: 5, teach: '车自己往上冲；到驿站合机关，点车上的格子装上去' },
   { id: '1-4', story: '公输家推来铁头龙撞城门', mode: 'defend', waves: 6, hp: 2.0, len: 18, boss: 'tietou', types: { shield: 0.12, powder: 0.08 } },
-  { id: '1-5', story: '修城墙时，第二批长龙杀到', mode: 'defend', waves: 6, hp: 2.6, len: 20, types: { shield: 0.15, powder: 0.1 } },
+  { id: '1-5', story: '修城墙时，第二批长龙杀到', mode: 'defend', waves: 6, hp: 3.0, len: 20, types: { shield: 0.15, powder: 0.1 } },
   { id: '1-6', story: '斥候发现城外十里的工坊', mode: 'attack', car: 'small', waves: 4, num: 6, types: { powder: 0.1, iron: 0.12 } },
-  { id: '1-7', story: '工坊的援兵来夺城', mode: 'defend', waves: 7, hp: 3.4, len: 22, types: { shield: 0.18, powder: 0.12 } },
+  { id: '1-7', story: '工坊的援兵来夺城', mode: 'defend', waves: 7, hp: 4.2, len: 22, types: { shield: 0.18, powder: 0.12 } },
   { id: '1-8', story: '开机关龙反攻工坊', mode: 'attack', car: 'dragon', waves: 5, num: 7, boss: 'ballista', types: { powder: 0.1, iron: 0.14 } },
-  { id: '1-c1', story: '挑战「只准用火」：机关台只能放火材料', mode: 'defend', waves: 6, hp: 3.0, len: 22, challenge: 'onlyFire', types: { shield: 0.15, powder: 0.1 } },
+  { id: '1-c1', story: '挑战「只准用火」：机关台只能放火材料', mode: 'defend', waves: 6, hp: 3.6, len: 22, challenge: 'onlyFire', types: { shield: 0.15, powder: 0.1 } },
   { id: '1-c2', story: '挑战「急行军」：车快一倍，砖也多一倍', mode: 'attack', car: 'small', waves: 4, num: 7, challenge: 'rush', types: { powder: 0.1, iron: 0.12 } },
 ];
 const WAVE_SEC = [32, 36, 40, 45, 45, 45, 45, 45];

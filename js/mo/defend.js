@@ -25,7 +25,7 @@ const SPOTS = [
   { x: 130, y: 572, name: '城门西台', why: '进城最后一段的另一边，和城门东台夹住' },
 ];
 // 关内花铜钱开下一个点位（一关里越开越贵）
-const SPOT_COST = [40, 60, 90, 130, 180];
+const SPOT_COST = [50, 90, 140, 200, 280];
 const BOLT_CD = 0.36;
 
 function slotPos(i) {
@@ -59,6 +59,7 @@ function startWave(st) {
   st.waveT = st.waveDur;
   st.spawnT = 0;
   st.spawned = 0;
+  st.dmgBy = {};
   st.mode = 'play';
   st.cd = r.slots.map((_, i) => (st.cd[i] !== undefined ? Math.min(st.cd[i], 0.6) : 0.6));
   st.heat = r.slots.map(() => 0);
@@ -74,14 +75,16 @@ function spawnDragon(st, boss) {
   const r = st.r;
   const lv = r.lv;
   const len = boss ? lv.len + 8 : Math.max(8, lv.len - 4 + r.wave * 2 + st.spawned * 2);
-  const base = (4 + r.wave * 2.2 + st.spawned * 1) * lv.hp;
+  const base = (4 + r.wave * 2.2 + st.spawned * 1) * lv.hp * 1.25;
   const segs = [];
+  // 第一波第一条龙直接出现在路的前段，放下机关几秒内就有得打（1-1 更靠前）
+  const head0 = r.wave === 0 && st.spawned === 0 && !boss ? (lv.id === '1-1' ? 520 : 260) : 0;
   for (let i = 0; i < len; i++) {
     let type = null;
     if (i > 0) for (const [ty, p] of Object.entries(lv.types || {})) if (!type && r.R() < p) type = ty;
     let hp = Math.round(base * (1 + i * 0.03) * (type === 'powder' ? 0.5 : 1));
     if (boss && i === 0) hp *= 10;
-    segs.push({ hp, hp0: hp, type, s: -i * GAP - 10, alive: true, burnT: 0, frozen: 0, chest: false, id: i });
+    segs.push({ hp, hp0: hp, type, s: -i * GAP - 10 + head0, alive: true, burnT: 0, frozen: 0, chest: false, id: i });
   }
   st.dragons.push({ segs, len0: len, v: (36 + r.wave * 3 + lv.hp * 4) * (boss ? 0.7 : 1), boss, dashCd: 6 + r.R() * 3, glow: 0, dash: 0, slowT: 0, slowK: 0, freezeT: 0, blockT: 0 });
   st.spawned++;
@@ -96,6 +99,13 @@ function forEachSeg(st, fn) {
 }
 
 // —— 伤害 ——
+// 本波伤害榜：记每种机关打了多少
+let CUR = null;
+function credit(st, mid, n) {
+  if (!mid || !(n > 0)) return;
+  st.dmgBy = st.dmgBy || {};
+  st.dmgBy[mid] = (st.dmgBy[mid] || 0) + n;
+}
 function hit(st, g, d, raw, opt) {
   if (!g.alive) return;
   const r = st.r;
@@ -106,18 +116,27 @@ function hit(st, g, d, raw, opt) {
   if (g.frozen > 0 && opt.frostBonus) dmg *= 1.5;
   let crit = false;
   if (!opt.noCrit) [dmg, crit] = B.rollCrit(r, dmg, opt.critBonus);
+  credit(st, CUR, Math.min(dmg, Math.max(0, g.hp)));
   g.hp -= dmg;
   const stt = B.stats(r);
   if (opt.machine && stt.burn > 0) {
     g.burnT = 2;
     g.burn = stt.burn;
   }
-  if (opt.machine && stt.freeze > 0 && r.R() * 100 < stt.freeze) d.freezeT = Math.max(d.freezeT, 0.5);
+  // 冰冻属性：同一条龙 2 秒内只定一次，Boss 不吃
+  if (opt.machine && stt.freeze > 0 && !d.boss && st.t - (d.frzAt || -9) > 2 && r.R() * 100 < stt.freeze) {
+    d.frzAt = st.t;
+    d.freezeT = Math.max(d.freezeT, 0.5);
+  }
   if (opt.machine && stt.slow > 0) {
     d.slowT = 1;
     d.slowK = Math.max(d.slowK, stt.slow / 100);
   }
-  if (opt.knock && stt.knock > 0) knock(d, stt.knock * 6);
+  // 击退：同一条龙 0.3 秒内只推一次（一发炸到好几节不叠推）
+  if (opt.knock && stt.knock > 0 && st.t - (d.knAt || -9) > 0.3) {
+    d.knAt = st.t;
+    knock(d, stt.knock * 6);
+  }
   const p = segXY(st, g);
   if (!opt.quiet) ev(st, { t: 'hit', x: p.x, y: p.y, dmg: Math.round(dmg), crit, big: dmg > 30 });
   if (g.hp <= 0) kill(st, g, d);
@@ -131,6 +150,12 @@ function kill(st, g, d) {
   const special = !!g.type || (d.boss && g.id === 0);
   const el = B.gainKill(st.r, special);
   ev(st, { t: 'kill', x: p.x, y: p.y, type: g.type, el, boss: d.boss && g.id === 0 });
+  // 整条龙都碎了：收尾奖励
+  if (!d.segs.some((o) => o.alive)) {
+    const bonus = 3 + Math.floor(d.len0 / 4);
+    st.r.coins += bonus;
+    ev(st, { t: 'dragonDown', x: p.x, y: p.y, bonus, boss: d.boss });
+  }
   if (g.type === 'powder') {
     ev(st, { t: 'boom', x: p.x, y: p.y });
     forEachSeg(st, (o, od) => {
@@ -191,6 +216,7 @@ function moveDragons(st, dt) {
       head.alive = false;
       const dmg = d.boss && head.id === 0 ? 25 : 2 + head.hp / 30;
       const real = B.hurtSelf(r, dmg);
+      if (d.boss && head.id === 0) st.bossBreached = true;
       ev(st, { t: 'breach', dmg: Math.round(real), boss: d.boss && head.id === 0 });
       if (r.hp <= 0) {
         st.mode = 'lose';
@@ -246,7 +272,7 @@ function pickTarget(st, x, y, range) {
   forEachSeg(st, (g, d) => {
     if (g.s < 0) return;
     const p = segXY(st, g);
-    if (Math.hypot(p.x - x, p.y - y) > range) return;
+    if (Math.hypot(p.x - x, p.y - y) > range + SEG_R) return; // 碰到节的边就算打得到
     if (!best || g.s > best.g.s) {
       best = { g, d, p };
       bd = g.s;
@@ -270,7 +296,7 @@ function stepMachines(st, dt) {
     const t4 = mc.tier >= 4;
     if (m.kind === 'heal') {
       st.cd[i] = 1;
-      B.heal(r, dmg * mc.tier);
+      B.heal(r, m.dmg * mc.tier); // 每秒回 2/4/6/8
       ev(st, { t: 'healTick', x: pos.x, y: pos.y });
       return;
     }
@@ -281,6 +307,8 @@ function stepMachines(st, dt) {
     }
     st.cd[i] = cd;
     const o = { machine: true, knock: true };
+    const n0 = [st.zones.length, st.pools.length, st.shots.length];
+    CUR = mc.id;
     switch (m.kind) {
       case 'bolt': {
         if (m.overheat && !t4) {
@@ -372,12 +400,18 @@ function stepMachines(st, dt) {
         break;
       }
     }
+    CUR = null;
+    // 这一下新生出来的箭、区域、火池，记上是谁的
+    [st.zones, st.pools, st.shots].forEach((arr, k) => {
+      for (let j = n0[k]; j < arr.length; j++) if (!arr[j].mid) arr[j].mid = mc.id;
+    });
   });
 }
 
 function stepShots(st, dt) {
   for (let i = st.shots.length - 1; i >= 0; i--) {
     const s = st.shots[i];
+    CUR = s.mid || null;
     if (s.kind === 'bolt') {
       if (!s.g.alive) {
         st.shots.splice(i, 1);
@@ -390,7 +424,11 @@ function stepShots(st, dt) {
       const step = 640 * dt;
       if (d <= step + 6) {
         hit(st, s.g, s.d, s.dmg, { machine: true, direct: true, critBonus: s.crit, knock: true });
-        st.shots.splice(i, 1);
+        // 穿透：箭接着飞向同一条龙的下一节
+        s.left--;
+        const nx = s.left > 0 ? s.d.segs.find((g) => g.alive && g.s < s.g.s && g.s > -5) : null;
+        if (nx) s.g = nx;
+        else st.shots.splice(i, 1);
       } else {
         s.x += (dx / d) * step;
         s.y += (dy / d) * step;
@@ -403,7 +441,7 @@ function stepShots(st, dt) {
           const p = segXY(st, g);
           if (Math.hypot(p.x - s.tx, p.y - s.ty) < s.R) hit(st, g, d, s.dmg, { machine: true, knock: true });
         });
-        if (s.pool) st.pools.push({ x: s.tx, y: s.ty, R: s.R * 0.8, dps: s.pool, t: 3 });
+        if (s.pool) st.pools.push({ x: s.tx, y: s.ty, R: s.R * 0.8, dps: s.pool, t: 3, mid: s.mid });
         ev(st, { t: 'lobBoom', x: s.tx, y: s.ty, R: s.R, mid: s.mid });
         st.shots.splice(i, 1);
       }
@@ -427,6 +465,7 @@ function stepShots(st, dt) {
       if (s.back && s.t >= 2) st.shots.splice(i, 1);
     }
   }
+  CUR = null;
   // 区域：网、泥、火墙、岩浆
   for (let i = st.zones.length - 1; i >= 0; i--) {
     const z = st.zones[i];
@@ -435,6 +474,7 @@ function stepShots(st, dt) {
       forEachSeg(st, (g, d) => {
         const p = segXY(st, g);
         if (Math.abs(p.y - z.y) < 20) {
+          credit(st, z.mid, Math.min(z.dps * dt, g.hp));
           g.hp -= z.dps * dt;
           if (g.hp <= 0) kill(st, g, d);
         }
@@ -442,6 +482,7 @@ function stepShots(st, dt) {
     } else if (z.dps) {
       forEachSeg(st, (g, d) => {
         if (g.s > z.s0 && g.s < z.s1) {
+          credit(st, z.mid, Math.min(z.dps * dt, g.hp));
           g.hp -= z.dps * dt;
           if (g.hp <= 0) kill(st, g, d);
         }
@@ -455,6 +496,7 @@ function stepShots(st, dt) {
     forEachSeg(st, (g, d) => {
       const p = segXY(st, g);
       if (Math.hypot(p.x - z.x, p.y - z.y) < z.R) {
+        credit(st, z.mid, Math.min(z.dps * dt, g.hp));
         g.hp -= z.dps * dt;
         if (g.hp <= 0) kill(st, g, d);
       }
@@ -475,12 +517,29 @@ function step(st, dt) {
     st.spawnT = st.waveDur * (bossWave ? 0.6 : 0.42);
   }
   stepMachines(st, dt);
+  if (r.hp <= 0) {
+    // 蒸汽炮把自己烫没了也算输
+    r.hp = 0;
+    st.mode = 'lose';
+    ev(st, { t: 'lose' });
+    return;
+  }
   stepShots(st, dt);
   moveDragons(st, dt);
   if (st.mode !== 'play') return;
   if (st.bossAlive && !st.dragons.some((d) => d.boss)) {
     st.bossAlive = false;
-    ev(st, { t: 'bossDown' });
+    ev(st, { t: st.bossBreached ? 'bossBreach' : 'bossDown' });
+  }
+  // 回复：每 5 秒回一次
+  st.regenT = (st.regenT || 0) + dt;
+  if (st.regenT >= 5) {
+    st.regenT -= 5;
+    const rg = B.stats(r).regen;
+    if (rg > 0 && r.hp < r.hpMax) {
+      B.heal(r, rg);
+      ev(st, { t: 'healTick', x: 180, y: WALL_Y });
+    }
   }
   st.waveT -= dt;
   const timeUp = st.waveT <= 0 && !st.bossAlive;
@@ -518,6 +577,17 @@ function botX(st) {
   return best ? segXY(st, best).x : D.FIELD.w / 2;
 }
 
+// 下一波预告：几条龙、每条大约几节、夹什么兵种节、是不是 Boss（和 step / spawnDragon 同一套算法）
+function previewWave(r) {
+  const D_ = D.WAVE_SEC[Math.min(r.wave, D.WAVE_SEC.length - 1)];
+  const boss = r.wave >= r.lv.waves - 1 && r.lv.boss;
+  const gap = D_ * (boss ? 0.6 : 0.42);
+  let n = 0;
+  for (let t = 0; t < D_ - 6; t += gap) n++;
+  const len0 = Math.max(8, r.lv.len - 4 + r.wave * 2);
+  return { n, len0, len1: Math.max(8, r.lv.len - 4 + r.wave * 2 + (n - 1) * 2), types: Object.keys(r.lv.types || {}), boss, last: r.wave >= r.lv.waves - 1 };
+}
+
 // 花铜钱开下一个点位
 function spotCost(r) {
   const n = r.spotsBought || 0;
@@ -532,4 +602,4 @@ function buySpot(r) {
   return true;
 }
 
-module.exports = { spotCost, buySpot, newDefend, step, nextWave, slotPos, rangeOf, segXY, alive, botX, SPOTS, WALL_Y, PLAYER_Y, SEG_R, GAP };
+module.exports = { previewWave, spotCost, buySpot, newDefend, step, nextWave, slotPos, rangeOf, segXY, alive, botX, SPOTS, WALL_Y, PLAYER_Y, SEG_R, GAP };

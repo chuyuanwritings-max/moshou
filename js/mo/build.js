@@ -29,6 +29,7 @@ function newRun(meta, lv, builderId, seed) {
   const st = stats(r);
   r.hpMax = Math.max(10, (lv.mode === 'defend' ? meta.wallHp : lv.car === 'dragon' ? 120 : 60) + st.hp);
   r.hp = r.hpMax;
+  r.bondHp = r.curBondHp || 0;
   rollShop(r);
   return r;
 }
@@ -52,7 +53,17 @@ function stats(r) {
   r.items.forEach((id) => add(D.IT[id].st));
   Object.keys(r.picks).forEach((k) => (st[k] += r.picks[k]));
   const bc = bondCount(r);
+  const hp0 = st.hp;
   Object.keys(bc).forEach((e) => add(D.BONDS[e][Math.min(6, bc[e])]));
+  // 羁绊给的生命：随场上机关变化，同步到城墙 / 车的上限
+  const bondHp = st.hp - hp0;
+  r.curBondHp = bondHp;
+  if (r.hpMax && bondHp !== (r.bondHp || 0)) {
+    const diff = bondHp - (r.bondHp || 0);
+    r.hpMax = Math.max(10, r.hpMax + diff);
+    r.hp = Math.min(r.hpMax, Math.max(1, r.hp + Math.max(0, diff)));
+    r.bondHp = bondHp;
+  }
   Object.keys(D.STAT_CAP).forEach((k) => (st[k] = Math.min(st[k], D.STAT_CAP[k])));
   r.stats = st;
   r.bonds = bc;
@@ -70,12 +81,12 @@ function dmgMul(r, m) {
   const lost = 1 - r.hp / r.hpMax;
   if (has(r, 'poqi')) k += Math.floor(lost * 10) * 0.03;
   if (has(r, 'nilin')) k += lost;
-  if (has(r, 'yifu')) k *= 3;
+  if (has(r, 'yifu') && r.slots.filter((s) => s).length === 1) k *= 3; // 一夫当关：场上只有一件才算
   return Math.max(0.1, k);
 }
 function cdMul(r) {
   const st = stats(r);
-  return 1 / (1 + (st.aspd + (has(r, 'yifu') ? 100 : 0)) / 100);
+  return 1 / (1 + (st.aspd + (has(r, 'yifu') && r.slots.filter((s) => s).length === 1 ? 100 : 0)) / 100);
 }
 // 暴击：返回 [伤害, 是否暴击]
 function rollCrit(r, dmg, bonus) {
@@ -104,7 +115,7 @@ function gainKill(r, special) {
   r.log.kills++;
   r.coins += 1 + Math.floor(r.R() * 3);
   r.xp++;
-  if (special || r.R() < (r.mode === 'attack' ? 0.4 : 0.45)) {
+  if (special || r.R() < (r.mode === 'attack' ? 0.4 : 0.3)) {
     const el = r.lv.challenge === 'onlyFire' && r.R() < 0.6 ? 'huo' : D.ELS[Math.floor(r.R() * 5)];
     r.mats[el]++;
     return el;
@@ -138,7 +149,8 @@ function waveEnd(r) {
 
 // —— 升级属性卡：4 选 1 ——
 function statCards(r) {
-  const keys = Object.keys(D.STATS);
+  // 进攻里缠绕、燃烧、击退没用，不发
+  const keys = Object.keys(D.STATS).filter((k) => !(r.lv.mode === 'attack' && (k === 'slow' || k === 'burn' || k === 'knock')));
   const out = [];
   while (out.length < 4) {
     const k = keys[Math.floor(r.R() * keys.length)];
@@ -180,7 +192,12 @@ function combine(r, list) {
   list.forEach((e) => (need[e] = (need[e] || 0) + 1));
   for (const e in need) if (r.mats[e] < need[e]) return null;
   for (const e in need) r.mats[e] -= need[e];
-  const tier = has(r, 'luban') && r.R() < 0.1 ? 2 : 1;
+  // 大成功：10% 直接高一阶；没出每次 +3%，连 6 次没出第 7 次必出（鲁班尺再 +10%）
+  r.makeMiss = r.makeMiss || 0;
+  const luck = !r.noLuck && (r.makeMiss >= 6 || r.R() < 0.1 + 0.03 * r.makeMiss + (has(r, 'luban') ? 0.1 : 0));
+  r.makeMiss = luck ? 0 : r.makeMiss + 1;
+  r.lastLucky = luck;
+  const tier = luck ? 2 : 1;
   let mc = { id: p.m.id, tier };
   // 手上已经有同名的：自动叠起来（阶数相加，最高 4 阶）
   const same = r.bench.find((x) => x.id === mc.id && x.tier + mc.tier <= 4);
@@ -207,6 +224,9 @@ function place(r, bi, si) {
   else if (cur.id === m.id && cur.tier + m.tier <= 4) {
     cur.tier += m.tier;
     res = 'merge';
+  } else if (cur.id === m.id) {
+    r.bench.splice(bi, 0, m); // 同名但叠不下：不动
+    return { full: true };
   } else {
     r.slots[si] = m;
     r.bench.push(cur);
@@ -229,6 +249,8 @@ function moveSlot(r, from, to) {
     b.tier += a.tier;
     r.slots[from] = null;
     res = 'merge';
+  } else if (b.id === a.id) {
+    return { full: true }; // 同名但叠不下：不对调
   } else {
     r.slots[to] = a;
     r.slots[from] = b;
@@ -237,12 +259,17 @@ function moveSlot(r, from, to) {
   r.dirty = true;
   return { res, slot: r.slots[to] };
 }
+// 能合的：场上已有同名（合了能叠）的排最前，其次不同元素的，最后两个一样的
 function makeable(r) {
+  const key = (m) => (r.slots.some((x) => x && x.id === m.id && x.tier < 4) ? 0 : m.els[0] !== m.els[1] ? 1 : 2);
   return D.MACHINES.filter((m) => {
     if (r.recipes.indexOf(m.id) < 0) return false;
     if (r.lv.challenge === 'onlyFire' && m.els.indexOf('huo') < 0) return false;
     return m.els.every((e) => r.mats[e] >= m.els.filter((x) => x === e).length);
-  });
+  })
+    .map((m, i) => ({ m, i, k: key(m) }))
+    .sort((a, b) => a.k - b.k || a.i - b.i)
+    .map((o) => o.m);
 }
 function sell(r, bi) {
   const m = r.bench[bi];
@@ -300,7 +327,12 @@ function buy(r, i) {
       r.hpMax = Math.max(10, Math.floor(r.hpMax / 2));
       r.hp = Math.min(r.hp, r.hpMax);
     }
-  } else if (o.kind === 'machine') r.bench.push({ id: o.id, tier: 1 });
+  } else if (o.kind === 'machine') {
+    // 买来的也自动叠到手上同名的
+    const same = r.bench.find((x) => x.id === o.id && x.tier + 1 <= 4);
+    if (same) same.tier += 1;
+    else r.bench.push({ id: o.id, tier: 1 });
+  }
   else r.mats[o.id] += o.n;
   r.log.bought++;
   r.dirty = true;

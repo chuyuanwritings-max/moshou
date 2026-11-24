@@ -211,7 +211,7 @@ function chew(st, dt) {
     st.r.hp -= 1;
     ev(st, { t: 'chew', x: st.head.x, wy: b.wy, kind: b.kind });
     if (b.n <= 0) breakBlock(st, b, 'chew');
-    if (st.r.hp <= 0) {
+    if (st.mode === 'play' && st.r.hp <= 0) {
       st.r.hp = 0;
       st.mode = 'lose';
       ev(st, { t: 'lose', left: b.alive ? Math.ceil(b.n) : 0 });
@@ -388,6 +388,7 @@ function step(st, dt) {
   chew(st, dt);
   if (st.mode !== 'play') return;
   stepMachines(st, dt);
+  if (st.mode !== 'play') return;
   stepEnemies(st, dt);
   const last = st.trail[st.trail.length - 1];
   if (Math.hypot(st.head.x - last.x, st.head.wy - last.wy) >= 2) st.trail.push({ x: st.head.x, wy: st.head.wy });
