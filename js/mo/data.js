@@ -149,6 +149,25 @@ const LEVELS = [
   { id: '1-c1', story: '挑战「只准用火」：机关台只能放火材料', mode: 'defend', waves: 6, hp: 3.6, len: 22, challenge: 'onlyFire', types: { shield: 0.15, powder: 0.1 } },
   { id: '1-c2', story: '挑战「急行军」：车快一倍，砖也多一倍', mode: 'attack', car: 'small', waves: 4, num: 7, challenge: 'rush', types: { powder: 0.1, iron: 0.12 } },
 ];
+// 手写龙编组（照王国保卫战、气球塔防 6：每一波是一道题，玩家记得住「1-4 第 2 波是盾头龙」）
+const DRAGON_KINDS = {
+  normal: { short: '', name: '长龙', tip: '普通的一条' },
+  shieldHead: { short: '前面有盾：用炸的', name: '盾头龙', tip: '头后 3 节是铜盾，正面只吃 2 成：用炸的、雷链、回旋刃' },
+  powderChain: { short: '打火药节连炸一串', name: '火药串', tip: '每隔 2 节一个火药节，点着一个连炸一串' },
+  goldTail: { short: '打碎金尾巴掉 15 钱', name: '金库龙', tip: '尾巴一节是金的，打碎掉 15 铜钱；让它进城就没了' },
+  twin: { short: '两条一前一后', name: '双短龙', tip: '两条短龙一前一后' },
+  longSlow: { short: '特别长、慢、血多', name: '长慢龙', tip: '特别长、走得慢，血多' },
+  fastShort: { short: '短，但跑得快', name: '快短龙', tip: '短，但跑得快' },
+};
+// 每关每波出哪几种（一波里第几条龙就取第几个，不够就从头轮）
+const PLANS = {
+  '1-1': [['normal'], ['powderChain'], ['normal', 'goldTail'], ['fastShort', 'normal'], ['longSlow', 'powderChain']],
+  '1-2': [['normal'], ['twin'], ['shieldHead', 'normal'], ['goldTail', 'fastShort'], ['longSlow', 'shieldHead']],
+  '1-4': [['normal'], ['shieldHead'], ['powderChain', 'goldTail'], ['twin', 'fastShort'], ['longSlow', 'shieldHead'], ['shieldHead', 'powderChain']],
+  '1-5': [['twin'], ['shieldHead', 'powderChain'], ['fastShort', 'goldTail'], ['longSlow'], ['twin', 'shieldHead'], ['powderChain', 'longSlow', 'fastShort']],
+  '1-7': [['shieldHead'], ['powderChain', 'twin'], ['goldTail', 'fastShort'], ['longSlow', 'shieldHead'], ['twin', 'powderChain'], ['fastShort', 'fastShort', 'goldTail'], ['longSlow', 'shieldHead', 'powderChain']],
+  '1-c1': [['powderChain'], ['shieldHead'], ['twin', 'goldTail'], ['fastShort', 'shieldHead'], ['longSlow', 'powderChain'], ['shieldHead', 'twin']],
+};
 const WAVE_SEC = [32, 36, 40, 45, 45, 45, 45, 45];
 
 // —— 局外 ——
@@ -163,5 +182,5 @@ const SHENJI = [{ id: 'modou', name: '墨斗', chars: ['墨', '斗'], need: 5, d
 
 module.exports = {
   FIELD, ELS, EL, STATS, STAT_BASE, STAT_CAP, STAT_CARD, TIER_DMG, TIER_CD, MACHINES, M, recipeOf, START_RECIPES,
-  BONDS, ITEMS, IT, BUILDERS, LEVELS, WAVE_SEC, META, SHENJI,
+  DRAGON_KINDS, PLANS, BONDS, ITEMS, IT, BUILDERS, LEVELS, WAVE_SEC, META, SHENJI,
 };

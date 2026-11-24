@@ -17,8 +17,8 @@ const SPOTS = [
   // 照《王国保卫战》摆：弯道内侧一个点盖两段；两条横路中间的点离两条路一样远，三个点交叉成杀伤区；入口最后开
   { x: 264, y: 452, name: '东南弯台', why: '第三、四条横路之间的右弯内侧，盖三段' },
   { x: 96, y: 310, name: '西弯箭楼', why: '第二、三条横路之间的左弯内侧，盖三段' },
-  { x: 180, y: 452, name: '南中土台', why: '第三、四条横路正中间，和东南弯台交叉：城门前的杀伤区' },
-  { x: 264, y: 167, name: '东北弯台', why: '第一、二条横路之间的右弯内侧，放减速拖慢' },
+  { x: 180, y: 452, name: '南中土台', why: '第三、四条横路正中间，和东南弯台交叉：城门前的杀伤区', buff: 'beacon' },
+  { x: 264, y: 167, name: '东北弯台', why: '第一、二条横路之间的右弯内侧，放减速拖慢', buff: 'high' },
   { x: 228, y: 572, name: '城门东台', why: '贴着进城的最后一段，最后一道防线' },
   { x: 180, y: 310, name: '中路土台', why: '第二、三条横路正中间，和西弯交叉：中间的杀伤区' },
   { x: 96, y: 167, name: '入口箭楼', why: '靠入口，盖得少，后开' },
@@ -31,8 +31,12 @@ const BOLT_CD = 0.36;
 function slotPos(i) {
   return SPOTS[i];
 }
-function rangeOf(r, m) {
-  return m.rng ? m.rng + B.stats(r).range : 0;
+// 风水位（照 Emberward 符文格、明日方舟高台）：高台射程 +30%，烽火台攻速 +20%
+const BUFF = { high: { name: '高台', tip: '射程 +30%' }, beacon: { name: '烽火台', tip: '攻速 +20%' } };
+function rangeOf(r, m, si) {
+  if (!m.rng) return 0;
+  const k = si !== undefined && SPOTS[si] && SPOTS[si].buff === 'high' ? 1.3 : 1;
+  return (m.rng + B.stats(r).range) * k;
 }
 
 function newDefend(r) {
@@ -70,23 +74,46 @@ function startWave(st) {
   ev(st, { t: 'waveStart', wave: r.wave });
 }
 
-// 一条龙：节的血一节比一节多一点，兵种节随机夹在里面
+// 这一波第几条龙是哪一种（手写编组；没写的关就是普通长龙）
+function kindOf(r, wave, idx) {
+  const plan = D.PLANS[r.lv.id];
+  const w = plan && plan[Math.min(wave, plan.length - 1)];
+  return w ? w[idx % w.length] : 'normal';
+}
+// 一条龙：节的血一节比一节多一点；按编组摆兵种节（普通长龙才随机夹）
 function spawnDragon(st, boss) {
   const r = st.r;
   const lv = r.lv;
-  const len = boss ? lv.len + 8 : Math.max(8, lv.len - 4 + r.wave * 2 + st.spawned * 2);
+  const kind = boss ? 'normal' : kindOf(r, r.wave, st.spawned);
+  let len = boss ? lv.len + 8 : Math.max(8, lv.len - 4 + r.wave * 2 + st.spawned * 2);
+  let vk = 1;
+  if (kind === 'longSlow') {
+    len = Math.round(len * 1.5);
+    vk = 0.75;
+  } else if (kind === 'fastShort') {
+    len = Math.max(6, Math.round(len * 0.6));
+    vk = 1.45;
+  } else if (kind === 'twin') len = Math.max(6, Math.round(len * 0.55));
   const base = (4 + r.wave * 2.2 + st.spawned * 1) * lv.hp * 1.25;
-  const segs = [];
   // 第一波第一条龙直接出现在路的前段，放下机关几秒内就有得打（1-1 更靠前）
   const head0 = r.wave === 0 && st.spawned === 0 && !boss ? (lv.id === '1-1' ? 520 : 260) : 0;
-  for (let i = 0; i < len; i++) {
-    let type = null;
-    if (i > 0) for (const [ty, p] of Object.entries(lv.types || {})) if (!type && r.R() < p) type = ty;
-    let hp = Math.round(base * (1 + i * 0.03) * (type === 'powder' ? 0.5 : 1));
-    if (boss && i === 0) hp *= 10;
-    segs.push({ hp, hp0: hp, type, s: -i * GAP - 10 + head0, alive: true, burnT: 0, frozen: 0, chest: false, id: i });
+  const n = kind === 'twin' ? 2 : 1;
+  for (let k = 0; k < n; k++) {
+    const off = head0 - k * (len * GAP + 70);
+    const segs = [];
+    for (let i = 0; i < len; i++) {
+      let type = null;
+      if (kind === 'normal' && i > 0) for (const [ty, p] of Object.entries(lv.types || {})) if (!type && r.R() < p) type = ty;
+      if (kind === 'shieldHead' && i >= 1 && i <= 3) type = 'shield';
+      if (kind === 'powderChain' && i % 3 === 2) type = 'powder';
+      if (kind === 'goldTail' && i === len - 1) type = 'gold';
+      let hp = Math.round(base * (1 + i * 0.03) * (type === 'powder' ? 0.5 : type === 'gold' ? 1.5 : 1));
+      if (boss && i === 0) hp *= 10;
+      segs.push({ hp, hp0: hp, type, s: -i * GAP - 10 + off, alive: true, burnT: 0, frozen: 0, chest: false, id: i });
+    }
+    st.dragons.push({ segs, kind, len0: len, v: (36 + r.wave * 3 + lv.hp * 4) * (boss ? 0.7 : 1) * vk, boss, dashCd: 6 + r.R() * 3, glow: 0, dash: 0, slowT: 0, slowK: 0, freezeT: 0, blockT: 0 });
   }
-  st.dragons.push({ segs, len0: len, v: (36 + r.wave * 3 + lv.hp * 4) * (boss ? 0.7 : 1), boss, dashCd: 6 + r.R() * 3, glow: 0, dash: 0, slowT: 0, slowK: 0, freezeT: 0, blockT: 0 });
+  if (kind !== 'normal') ev(st, { t: 'dragonIn', kind, x: st.path.at(0).x, y: 70 });
   st.spawned++;
 }
 
@@ -150,6 +177,10 @@ function kill(st, g, d) {
   const special = !!g.type || (d.boss && g.id === 0);
   const el = B.gainKill(st.r, special);
   ev(st, { t: 'kill', x: p.x, y: p.y, type: g.type, el, boss: d.boss && g.id === 0 });
+  if (g.type === 'gold') {
+    st.r.coins += 15;
+    ev(st, { t: 'gold', x: p.x, y: p.y });
+  }
   // 整条龙都碎了：收尾奖励
   if (!d.segs.some((o) => o.alive)) {
     const bonus = 3 + Math.floor(d.len0 / 4);
@@ -212,11 +243,28 @@ function moveDragons(st, dt) {
       else g.s = want;
     }
     // 撞城门：头一节冲进门，城墙掉血，这一节没了
+    if (head.s >= st.path.len && !st.logUsed && !(d.boss && head.id === 0)) {
+      // 城门滚木（照植物大战僵尸的小推车）：每关一次，第一次有龙头撞门时滚木砸下来，把整条推回去、停 1.5 秒，不掉血
+      st.logUsed = true;
+      knock(d, 150);
+      d.blockT = Math.max(d.blockT, 1.5);
+      ev(st, { t: 'log', x: segXY(st, head).x, y: segXY(st, head).y });
+      continue;
+    }
     if (head.s >= st.path.len) {
       head.alive = false;
       const dmg = d.boss && head.id === 0 ? 25 : 2 + head.hp / 30;
       const real = B.hurtSelf(r, dmg);
       if (d.boss && head.id === 0) st.bossBreached = true;
+      // 掉血返材料（照赵云与阿斗卖血换馒头）：城墙每掉 10% 血，蹦出一份随机材料
+      const lostTenth = Math.floor((1 - r.hp / r.hpMax) * 10);
+      r.refunded = r.refunded || 0;
+      while (r.refunded < lostTenth && r.hp > 0) {
+        r.refunded++;
+        const el = D.ELS[Math.floor(r.R() * 5)];
+        r.mats[el]++;
+        ev(st, { t: 'refund', el, x: 180, y: WALL_Y - 20 });
+      }
       ev(st, { t: 'breach', dmg: Math.round(real), boss: d.boss && head.id === 0 });
       if (r.hp <= 0) {
         st.mode = 'lose';
@@ -305,12 +353,12 @@ function stepMachines(st, dt) {
       ev(st, { t: 'healTick', x: pos.x, y: pos.y });
       return;
     }
-    const tg = pickTarget(st, pos.x, pos.y, rangeOf(r, m));
+    const tg = pickTarget(st, pos.x, pos.y, rangeOf(r, m, i));
     if (!tg) {
       st.cd[i] = 0.2;
       return;
     }
-    st.cd[i] = cd;
+    st.cd[i] = cd / (pos.buff === 'beacon' ? 1.2 : 1);
     const o = { machine: true, knock: true };
     const n0 = [st.zones.length, st.pools.length, st.shots.length];
     CUR = mc.id;
@@ -389,7 +437,7 @@ function stepMachines(st, dt) {
         const n = t4 ? 3 : 1;
         for (let k = 0; k < n; k++) {
           const a = Math.atan2(tg.p.y - pos.y, tg.p.x - pos.x) + (k - (n - 1) / 2) * 0.4;
-          const R = rangeOf(r, m);
+          const R = rangeOf(r, m, i);
           st.shots.push({ kind: 'blade', x: pos.x, y: pos.y, ox: pos.x, oy: pos.y, tx: pos.x + Math.cos(a) * R, ty: pos.y + Math.sin(a) * R, t: 0, dmg, hitSet: [], back: false });
         }
         ev(st, { t: 'bladeThrow', x: pos.x, y: pos.y });
@@ -609,7 +657,9 @@ function previewWave(r) {
   let n = 0;
   for (let t = 0; t < D_ - 6; t += gap) n++;
   const len0 = Math.max(8, r.lv.len - 4 + r.wave * 2);
-  return { n, len0, len1: Math.max(8, r.lv.len - 4 + r.wave * 2 + (n - 1) * 2), types: Object.keys(r.lv.types || {}), boss, last: r.wave >= r.lv.waves - 1 };
+  const kinds = [];
+  for (let k = 0; k < n; k++) kinds.push(kindOf(r, r.wave, k));
+  return { n, kinds, len0, len1: Math.max(8, r.lv.len - 4 + r.wave * 2 + (n - 1) * 2), types: Object.keys(r.lv.types || {}), boss, last: r.wave >= r.lv.waves - 1 };
 }
 
 // 花铜钱开下一个点位
@@ -626,4 +676,4 @@ function buySpot(r) {
   return true;
 }
 
-module.exports = { smash, previewWave, spotCost, buySpot, newDefend, step, nextWave, slotPos, rangeOf, segXY, alive, botX, SPOTS, WALL_Y, PLAYER_Y, SEG_R, GAP };
+module.exports = { BUFF, smash, previewWave, spotCost, buySpot, newDefend, step, nextWave, slotPos, rangeOf, segXY, alive, botX, SPOTS, WALL_Y, PLAYER_Y, SEG_R, GAP };

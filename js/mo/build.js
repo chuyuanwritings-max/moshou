@@ -116,11 +116,24 @@ function gainKill(r, special) {
   r.coins += 1 + Math.floor(r.R() * 3);
   r.xp++;
   if (special || r.R() < (r.mode === 'attack' ? 0.4 : 0.3)) {
-    const el = r.lv.challenge === 'onlyFire' && r.R() < 0.6 ? 'huo' : D.ELS[Math.floor(r.R() * 5)];
+    const el = nextDrop(r);
+    r.nextEl = rollEl(r);
     r.mats[el]++;
     return el;
   }
   return null;
+}
+// 下一份材料（照 Isle of Arrows 预告下一块）：先定好，机关台上显示「下一份：火」
+function rollEl(r) {
+  return r.lv.challenge === 'onlyFire' && r.R() < 0.6 ? 'huo' : D.ELS[Math.floor(r.R() * 5)];
+}
+// 保底：现在一件都合不了、手上又有落单的材料时，下一份必定凑成一对
+function nextDrop(r) {
+  if (!r.nextEl) r.nextEl = rollEl(r);
+  if (makeable(r).length) return r.nextEl;
+  const singles = D.ELS.filter((e) => r.mats[e] === 1 && makeable(Object.assign({}, r, { mats: Object.assign({}, r.mats, { [e]: 2 }) })).length);
+  if (!singles.length || singles.indexOf(r.nextEl) >= 0) return r.nextEl;
+  return singles[0];
 }
 const xpNeed = (lvl) => (lvl + 3) * (lvl + 3);
 // 波末：升级、收获、利息
@@ -343,4 +356,4 @@ function buy(r, i) {
   return true;
 }
 
-module.exports = { makeable, moveSlot, newRun, stats, dmgMul, cdMul, rollCrit, hurtSelf, heal, gainKill, waveEnd, xpNeed, statCards, pickCard, preview, combine, place, sell, rollShop, refresh, refreshCost, buy, has, bondCount };
+module.exports = { nextDrop, makeable, moveSlot, newRun, stats, dmgMul, cdMul, rollCrit, hurtSelf, heal, gainKill, waveEnd, xpNeed, statCards, pickCard, preview, combine, place, sell, rollShop, refresh, refreshCost, buy, has, bondCount };

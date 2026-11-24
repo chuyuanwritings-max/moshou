@@ -357,7 +357,10 @@ function drawDragM() {
   }
   if (tgt && tgt.startsWith('spot') && G.r.lv.mode === 'defend') {
     const p = F.slotPos(+tgt.slice(4));
-    const R = F.rangeOf(G.r, D.M[m.id]);
+    const tsi = +tgt.slice(4);
+    const R = F.rangeOf(G.r, D.M[m.id], tsi);
+    const bf = F.SPOTS[tsi].buff;
+    if (bf) bigText(ctx, F.BUFF[bf].name + '：' + F.BUFF[bf].tip, d.fx, d.fy - 66, 12, '#9dff7a', LINE);
     if (R) {
       ctx.strokeStyle = 'rgba(120,255,120,0.9)';
       ctx.fillStyle = 'rgba(120,255,120,0.12)';
@@ -737,7 +740,7 @@ function killFx(x, y, col) {
 function orb(x, y, el) {
   const i = D.ELS.indexOf(el);
   const live = !!G.r;
-  const tx = live ? 24 + i * 44 : 214 + i * 28;
+  const tx = live ? 20 + i * 41 : 214 + i * 28;
   const ty = live ? 618 : 32;
   G.fx.push({ k: 'orb', x, y, x0: x, y0: y, tx, ty, t: 0, life: 0.55, col: D.EL[el].col });
 }
@@ -783,6 +786,35 @@ function handleEvents() {
         if (e.kind === 'tower') pop('拆了弩塔！', x, y - 30, '#ffb74a', 15);
         break;
       }
+      case 'dragonIn': {
+        const K = D.DRAGON_KINDS[e.kind];
+        pop(K.name + '！', FW / 2, 120, '#ffb74a', 20);
+        if (!G.seenKinds) G.seenKinds = {};
+        if (!G.seenKinds[e.kind]) {
+          G.seenKinds[e.kind] = 1;
+          pop(K.tip, FW / 2, 146, '#fff8e6', 11);
+        }
+        snd('alarm', 0, 0.3, 1.2);
+        break;
+      }
+      case 'gold':
+        pop('金库！+15', x, y - 30, '#ffd65a', 18);
+        sparks(x, y, 16, '#ffd65a');
+        snd('coin', 0, 0.7);
+        break;
+      case 'log':
+        G.shake = Math.max(G.shake, 10);
+        sparks(x, y, 18, '#c9933a');
+        chunks(x, y, 10, '#8a6a3a', 1.2);
+        pop('城门滚木！推回去了', x, y - 30, '#ffd65a', 18);
+        snd('thud', 0, 0.8);
+        snd('ram', 0, 0.5);
+        PF.vibrate(true);
+        break;
+      case 'refund':
+        orb(x, y, e.el);
+        pop('掉血换材料 +1 ' + D.EL[e.el].name, x, y - 30, '#9dff7a', 13);
+        break;
       case 'smash':
         // 阿铸一锤：大震、白闪、顿一下
         G.shake = Math.max(G.shake, 16);
@@ -1200,6 +1232,39 @@ function drawSmashBtn() {
   else bigText(ctx, c + '/' + CHARGE_MAX, x, y + R + 12, 9, '#cbb8a8', LINE);
 }
 
+// 风水位的记号：高台插小旗，烽火台点火盆；下面一行小字写加成
+function drawBuffMark(p, open) {
+  const a = open ? 1 : 0.55;
+  ctx.save();
+  ctx.globalAlpha = a;
+  if (p.buff === 'high') {
+    ctx.strokeStyle = LINE;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(p.x + 22, p.y + 12);
+    ctx.lineTo(p.x + 22, p.y - 20);
+    ctx.stroke();
+    ctx.fillStyle = '#3f8ad8';
+    ctx.beginPath();
+    ctx.moveTo(p.x + 22, p.y - 20);
+    ctx.lineTo(p.x + 36, p.y - 15);
+    ctx.lineTo(p.x + 22, p.y - 10);
+    ctx.fill();
+  } else {
+    ctx.fillStyle = '#4a3a2a';
+    ctx.fillRect(p.x + 18, p.y + 2, 10, 10);
+    ctx.fillStyle = '#ff9a3a';
+    ctx.beginPath();
+    ctx.arc(p.x + 23, p.y - 2 + Math.sin(G.t * 12) * 1.5, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#ffe07a';
+    ctx.beginPath();
+    ctx.arc(p.x + 23, p.y, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  bigText(ctx, F.BUFF[p.buff].name + ' ' + F.BUFF[p.buff].tip, p.x, p.y + 25, 9, p.buff === 'high' ? '#a8d4ff' : '#ffc07a', LINE);
+  ctx.restore();
+}
 // 波中挪过的机关：压暗 + 一圈进度 +「装」字，转满才开火
 const INSTALL_SEC = 3;
 function drawInstall(x, y, R, left) {
@@ -1339,6 +1404,18 @@ function drawDefend() {
           ctx.arc(p.x + Math.cos(p.a) * 10, p.y + Math.sin(p.a) * 10, 7, 0, Math.PI * 2);
           ctx.fill();
           ctx.stroke();
+        } else if (g.type === 'gold') {
+          ctx.fillStyle = '#ffd65a';
+          ctx.strokeStyle = LINE;
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, 10, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+          ctx.fillStyle = 'rgba(255,255,255,' + (0.4 + 0.4 * Math.sin(G.t * 6)) + ')';
+          ctx.beginPath();
+          ctx.arc(p.x - 3, p.y - 4, 3, 0, Math.PI * 2);
+          ctx.fill();
         } else if (g.type === 'powder') {
           ctx.fillStyle = '#9b3b26';
           ctx.beginPath();
@@ -1384,7 +1461,7 @@ function drawDefend() {
     const open = i < r.slots.length;
     const mc = r.slots[i];
     // 射程圈：选中手上的机关时，空点位都画一圈；点了某个点位就画它的圈
-    const showR = hand && open && (!mc || canStack(mc, r.bench[G.sel])) ? F.rangeOf(r, hand) : G.spotView && G.spotView.i === i && mc ? F.rangeOf(r, D.M[mc.id]) : 0;
+    const showR = hand && open && (!mc || canStack(mc, r.bench[G.sel])) ? F.rangeOf(r, hand, i) : G.spotView && G.spotView.i === i && mc ? F.rangeOf(r, D.M[mc.id], i) : 0;
     if (showR) {
       ctx.fillStyle = 'rgba(255,214,90,0.10)';
       ctx.strokeStyle = 'rgba(255,214,90,0.7)';
@@ -1411,6 +1488,7 @@ function drawDefend() {
     roundRect(ctx, p.x - 17, p.y - 14, 34, 12, 4);
     ctx.fill();
     ctx.stroke();
+    if (p.buff) drawBuffMark(p, open);
     if (!open) {
       const cost = i === r.slots.length ? F.spotCost(r) : null;
       if (cost !== null) {
@@ -1889,7 +1967,7 @@ function drawLiveBench() {
   }
   // 第一行：五种材料各有几个（只看，不用点）+ 八卦 + 合成表
   D.ELS.forEach((e, i) => {
-    const x = 12 + i * 44;
+    const x = 8 + i * 41;
     ctx.fillStyle = r.mats[e] ? D.EL[e].col : '#3a3028';
     ctx.strokeStyle = LINE;
     ctx.lineWidth = 1.5;
@@ -1900,7 +1978,18 @@ function drawLiveBench() {
     bigText(ctx, D.EL[e].name, x + 12, y0 + 18, 11, LINE, '#fff8e6');
     bigText(ctx, '×' + r.mats[e], x + 30, y0 + 18, 12, r.mats[e] ? '#fff8e6' : '#7a6a56', LINE);
   });
-  drawBagua(244, y0 + 20, 16);
+  // 下一份掉什么（照 Isle of Arrows 预告下一块；没得合时保底凑一对）
+  const ne = B.nextDrop(r);
+  ctx.fillStyle = D.EL[ne].col;
+  ctx.strokeStyle = '#ffd65a';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(225, y0 + 14, 8, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  bigText(ctx, D.EL[ne].name, 225, y0 + 14, 9, LINE, '#fff8e6');
+  bigText(ctx, '下一份', 225, y0 + 30, 8, '#ffd65a', LINE);
+  drawBagua(258, y0 + 20, 15);
   btn('recipes', FW - 82, y0 + 6, 72, 26, '合成表', '#5a3a1e', '', { size: 12 });
   // 第二行：现在能合的，点一下就合
   if (mk.length) {
@@ -2032,8 +2121,11 @@ function drawShop() {
     roundRect(ctx, 196, 180, FW - 206, 84, 10);
     ctx.fill();
     bigText(ctx, pv.last ? (pv.boss ? '下一波：铁头龙！' : '下一波：最后一波！') : '下一波', 206, 194, 12, pv.last ? '#ffdf7a' : '#ffd65a', LINE, 'left');
-    bigText(ctx, '龙 ×' + pv.n + (pv.boss ? ' + 铁头龙' : '') + '，每条约 ' + pv.len0 + '–' + pv.len1 + ' 节', 206, 212, 10, '#fff8e6', LINE, 'left');
-    pv.types.forEach((ty, i) => bigText(ctx, '· ' + (TN[ty] || ty), 206, 228 + i * 14, 9, '#e8c8a8', LINE, 'left'));
+    bigText(ctx, pv.kinds.map((k) => D.DRAGON_KINDS[k].name).join(' + ') + (pv.boss ? ' + 铁头龙' : ''), 206, 212, 10, '#fff8e6', LINE, 'left');
+    const lines = [];
+    [...new Set(pv.kinds)].forEach((k) => D.DRAGON_KINDS[k].short && lines.push(D.DRAGON_KINDS[k].name + '：' + D.DRAGON_KINDS[k].short));
+    if (pv.kinds.indexOf('normal') >= 0) pv.types.forEach((ty) => lines.push(TN[ty] || ty));
+    lines.slice(0, 3).forEach((t, i) => bigText(ctx, '· ' + t, 206, 228 + i * 13, 9, '#e8c8a8', LINE, 'left'));
   } else {
   // 进攻的驿站：合成在路上做；这里看下一段有什么（照 Thronefall 白天预告夜里的敌人）
   const st = G.st;
