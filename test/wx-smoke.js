@@ -39,7 +39,7 @@ touch('down', 195, 760);
 for (let i = 0; i < 600; i++) { touch('move', 195 + Math.sin(i / 20) * 150, 760); run(1); }
 touch('up', 195, 760);
 // 0.6：主页点「一攻一守」→ 地图第 1 关 → 出发 → 打一会儿
-for (const [x, y] of [[195, 420], [195, 725], [195, 640]]) { touch('down', x, y); touch('up', x, y); run(40); }
+for (const [x, y] of [[195, 420], [195, 682], [195, 725], [195, 745]]) { touch('down', x, y); touch('up', x, y); run(40); }
 touch('down', 195, 760);
 for (let i = 0; i < 900; i++) { touch('move', 195 + Math.sin(i / 20) * 150, 760); run(1); }
 touch('up', 195, 760);
