@@ -140,10 +140,10 @@ const BUILDERS = [
 const LEVELS = [
   { id: '1-1', story: '公输家的机关长龙来攻边城', mode: 'defend', waves: 5, hp: 1, len: 14, teach: '龙掉的材料飞进下面；能合的点一下就合，再拖到路边亮着的点位' },
   { id: '1-2', story: '长龙退了，城外留下一串车辙', mode: 'defend', waves: 5, hp: 1.4, len: 16, teach: '两件一样的机关叠在一起，升一阶' },
-  { id: '1-3', story: '顺着车辙找到公输家的前哨', mode: 'attack', car: 'small', waves: 4, num: 5, teach: '车自己往上冲；到驿站合机关，点车上的格子装上去' },
+  { id: '1-3', story: '顺着车辙找到公输家的前哨', mode: 'attack', car: 'small', waves: 4, num: 5, teach: '车自己往上冲；砖掉的材料在下面合，合好拖到车上的格子' },
   { id: '1-4', story: '公输家推来铁头龙撞城门', mode: 'defend', waves: 6, hp: 2.0, len: 18, boss: 'tietou', types: { shield: 0.12, powder: 0.08 } },
   { id: '1-5', story: '修城墙时，第二批长龙杀到', mode: 'defend', waves: 6, hp: 3.0, len: 20, types: { shield: 0.15, powder: 0.1 } },
-  { id: '1-6', story: '斥候发现城外十里的工坊', mode: 'attack', car: 'small', waves: 4, num: 6, types: { powder: 0.1, iron: 0.12 } },
+  { id: '1-6', story: '斥候发现城外十里的工坊', mode: 'attack', car: 'small', waves: 4, num: 5, types: { powder: 0.1, iron: 0.12 } },
   { id: '1-7', story: '工坊的援兵来夺城', mode: 'defend', waves: 7, hp: 4.2, len: 22, types: { shield: 0.18, powder: 0.12 } },
   { id: '1-8', story: '开机关龙反攻工坊', mode: 'attack', car: 'dragon', waves: 5, num: 7, boss: 'ballista', types: { powder: 0.1, iron: 0.14 } },
   { id: '1-c1', story: '挑战「只准用火」：机关台只能放火材料', mode: 'defend', waves: 6, hp: 3.6, len: 22, challenge: 'onlyFire', types: { shield: 0.15, powder: 0.1 } },

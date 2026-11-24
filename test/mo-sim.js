@@ -44,12 +44,13 @@ function run(li, seed, skill, live) {
   while ((st.mode === 'play' || st.mode === 'shop') && g++ < 60 * 400) {
     if (st.mode === 'shop') {
       B.waveEnd(r);
-      botWorkshop(r);
+      if (live !== 'none') botWorkshop(r);
+      else while (r.cards) B.pickCard(r, 0);
       S.nextWave(st);
       continue;
     }
     st.targetX = skill ? S.botX(st) : 180;
-    if (live && lv.mode === 'defend' && g % 60 === 0) botWorkshop(r, true);
+    if (live === true && g % 60 === 0) botWorkshop(r, true);
     S.step(st, 1 / 60);
     st.events.length = 0;
   }
@@ -57,8 +58,8 @@ function run(li, seed, skill, live) {
 }
 
 const N = +process.argv[2] || 40;
-const LIVE = process.argv[3] !== 'between';
-console.log(LIVE ? '【边打边合】' : '【只在波间合】');
+const LIVE = process.argv[3] === 'between' ? false : process.argv[3] === 'none' ? 'none' : true;
+console.log(LIVE === true ? '【边打边合】' : LIVE === 'none' ? '【什么都不做】' : '【只在波间合】');
 for (const li of [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]) {
   let w = 0, t = 0, hp = 0, made = 0, kills = 0;
   for (let i = 0; i < N; i++) {

@@ -8,7 +8,7 @@ const LANES = 5;
 const CELL = 72;
 const BLOCK = 66;
 const HALF = BLOCK / 2;
-const HEAD_Y = 520;
+const HEAD_Y = 430; // 0.7.1：车往上挪，底下放常驻机关台
 const HEAD_R = 14;
 const SEG = 22;
 const laneX = (i) => CELL * i + CELL / 2;
@@ -56,7 +56,7 @@ function buildLevel(st) {
     legEnds.push(wy); // 驿站
     wy += CELL;
   }
-  const gate = { kind: 'gate', boss: lv.boss || null, x: D.FIELD.w / 2, wy: wy + HALF + 40, n: (lv.boss ? 30 : 16) + lv.num * 3, n0: 0, alive: true, cd: 1.5 };
+  const gate = { kind: 'gate', boss: lv.boss || null, x: D.FIELD.w / 2, wy: wy + HALF + 40, n: Math.round(((lv.boss ? 40 : 24) + lv.num * 4) * 1.8), n0: 0, alive: true, cd: 1.5 };
   gate.n0 = gate.n;
   blocks.push(gate);
   return { blocks, fences, items, legEnds, gate, endWY: gate.wy };
@@ -232,7 +232,7 @@ function stepMachines(st, dt) {
     st.cd[i] -= dt;
     if (st.cd[i] > 0) return;
     const cd = m.cd * D.TIER_CD[mc.tier - 1] * B.cdMul(r);
-    const dmg = (m.dmg * D.TIER_DMG[mc.tier - 1] * B.dmgMul(r, m)) / 8;
+    const dmg = (m.dmg * D.TIER_DMG[mc.tier - 1] * B.dmgMul(r, m)) / 3.5; // 0.7.1：边开边合以后机关要真管用（原来 ÷8）
     st.cd[i] = cd;
     switch (m.atk) {
       case 'shoot':

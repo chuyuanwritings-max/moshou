@@ -219,7 +219,7 @@ function onTouch(type, id, px, py) {
             snd(res.res === 'merge' ? 'evolve' : 'clang', 0, 0.5);
             if (res.res === 'merge') {
               PF.vibrate(true);
-              const p = G.r.lv.mode === 'defend' && G.scr === 'play' ? F.slotPos(to) : { x: FW / 2, y: 120 };
+              const p = G.r.lv.mode === 'defend' && G.scr === 'play' ? F.slotPos(to) : { x: FW / 2, y: G.scr === 'play' ? 540 : 120 };
               pop('叠成 ' + res.slot.tier + ' 阶！', p.x, p.y - 26, '#ffd65a', 16);
               sparks(p.x, p.y - 10, 12, '#ffd65a');
             }
@@ -372,7 +372,7 @@ function press(id) {
       });
       if (!mc.stacked) {
         if (r.lv.mode === 'defend') pop(D.M[mc.id].name + '：拖到亮着的点位', FW / 2, 560, '#ffd65a', 15);
-        else pop(D.M[mc.id].name + '：拖到上面车上的格子', FW / 2, 520, '#ffd65a', 15);
+        else pop(D.M[mc.id].name + '：拖到车上的格子', FW / 2, G.scr === 'play' ? 540 : 520, '#ffd65a', 15);
       }
     }
   } else if (id.startsWith('tray')) {
@@ -528,7 +528,7 @@ function drawTut() {
 const TIPS = {
   combine2: [{ text: '下面亮了：又能合了。「能合」那里列着的，点一下就合', target: 'make_*' }],
   recipes: [{ text: '不一样的元素也能合！比如木 + 火 = 火龙车、金 + 水 = 雷链。能合的会直接列出来；全部组合点「合成表」看', target: 'make_*|recipes' }],
-  merge: [{ text: '手上这件和场上某件同名！把它拖到标着「叠↑」的点位，阶数相加（最高 4 阶），打得更狠。场上的机关也能直接拖到另一件一样的上面叠', target: 'spot*' }],
+  merge: [{ text: '手上这件和场上某件同名！把它拖到标着「叠↑」的点位（进攻是车格），阶数相加（最高 4 阶），打得更狠。场上的机关也能直接拖到另一件一样的上面叠', target: 'spot*|slot*' }],
   mergeShop: [{ text: '手上这件和上面某格同名！把它拖到标着「叠」的格子，阶数相加（最高 4 阶）', target: 'slot*' }],
   buySpot: [{ text: '铜钱够了：点「修」开一个新点位，多放一件机关', target: 'buySpot' }],
   cards: [{ text: '升级了！挑一个属性，这一关一直有效。圆圈的颜色就是五行', target: 'card*' }],
@@ -539,11 +539,13 @@ const TIPS = {
     { text: '上面是你的点位。手上的机关（最下面）按住拖上来就能放；拖到一样的机关上会叠成高一阶', target: 'slot*' },
     { text: '准备好了就点「下一波」', target: 'nextWave' },
   ],
-  attack: [{ text: '进攻：车自己开、自己躲砖。车上的机关自动打前面的砖，撞上砖啃一口掉 1 血', target: null }],
+  attack: [
+    { text: '进攻：车自己开、自己躲砖。车上的机关自动打前面的砖，撞上砖啃一口掉 1 血', target: null },
+    { text: '和守城一样边开边合：砖碎了掉材料，能合的点一下，合好按住拖到这一排车上的格子', target: 'slot*' },
+  ],
   station: [
-    { text: '到驿站了：能合的机关列在这里，点一下就合', target: 'make_*' },
-    { text: '合好的机关在最下面，按住拖到上面车上的格子装上去', target: 'slot*' },
-    { text: '小店、锁、刷新和守城一样。准备好了点「继续冲」', target: 'nextWave' },
+    { text: '到驿站了：这里挑属性、逛小店；合机关在路上随时做', target: 'buy*|lock*' },
+    { text: '上面一排是车上的格子，手上的机关也能在这里拖上去。准备好了点「继续冲」', target: 'slot*|nextWave' },
   ],
 };
 function showTip(key) {
@@ -637,7 +639,7 @@ function killFx(x, y, col) {
 // 材料飞进右上角口袋（0.1 秒闪一圈）
 function orb(x, y, el) {
   const i = D.ELS.indexOf(el);
-  const live = G.r && G.r.lv.mode === 'defend';
+  const live = !!G.r;
   const tx = live ? 24 + i * 44 : 214 + i * 28;
   const ty = live ? 618 : 32;
   G.fx.push({ k: 'orb', x, y, x0: x, y0: y, tx, ty, t: 0, life: 0.55, col: D.EL[el].col });
@@ -878,7 +880,7 @@ function frame() {
     while (acc >= 1 / 60 && n++ < 40 && G.scr === 'play') {
       acc -= 1 / 60;
       if (G.r.lv.mode === 'attack') G.st.targetX = S().botX(G.st);
-      if (G.bot && G.r.lv.mode === 'defend' && Math.random() < 0.02) botCombine();
+      if (G.bot && Math.random() < 0.02) botCombine();
       S().step(G.st, 1 / 60);
       handleEvents();
     }
@@ -977,7 +979,7 @@ function render() {
     drawFx();
     ctx.restore();
     drawHud();
-    if (G.scr === 'play' && G.r.lv.mode === 'defend') drawLiveBench();
+    if (G.scr === 'play') drawLiveBench();
     if (G.tut && G.scr === 'play') drawTut();
     if (G.scr === 'shop') drawShop();
     if (G.scr === 'result') drawResult();
@@ -996,7 +998,7 @@ function checkTips() {
   const r = G.r;
   const seen = (k) => meta.tips && meta.tips[k];
   const stackIdx = () => r.bench.findIndex((m) => r.slots.some((x) => canStack(x, m)));
-  if (G.scr === 'play' && r.lv.mode === 'defend' && !G.tut) {
+  if (G.scr === 'play' && !G.tut && (r.lv.mode === 'defend' || seen('attack'))) {
     const mk = B.makeable(r);
     if (!seen('recipes') && mk.some((m) => m.els[0] !== m.els[1])) return showTip('recipes');
     if (!seen('merge') && stackIdx() >= 0) {
@@ -1004,7 +1006,7 @@ function checkTips() {
       return showTip('merge');
     }
     if (!seen('combine2') && mk.length && G.st.t > 3) return showTip('combine2');
-    if (!seen('buySpot') && F.spotCost(r) !== null && r.coins >= F.spotCost(r)) return showTip('buySpot');
+    if (r.lv.mode === 'defend' && !seen('buySpot') && F.spotCost(r) !== null && r.coins >= F.spotCost(r)) return showTip('buySpot');
   }
   if (G.scr === 'play' && r.lv.mode === 'attack' && G.st.t > 0.5) showTip('attack');
   if (G.scr === 'shop') {
@@ -1304,7 +1306,7 @@ function drawAttack() {
     const y = sy(wy);
     ctx.fillStyle = 'rgba(200,64,44,0.85)';
     ctx.fillRect(0, y - 12, FW, 24);
-    bigText(ctx, '驿 站 · 停下来合机关', FW / 2, y, 14, '#fff8e6', LINE);
+    bigText(ctx, '驿 站 · 升级、买东西', FW / 2, y, 14, '#fff8e6', LINE);
   });
   for (const it of st.items) {
     if (!it.alive || !vis(it.wy, 30)) continue;
@@ -1445,6 +1447,12 @@ function drawWaveBar(x0, y0, w) {
   for (let i = 0; i < n; i++) {
     const x = x0 + i * gw;
     let k = i < r.wave ? 1 : i === r.wave && st.waveDur ? clamp(1 - st.waveT / st.waveDur, 0, 1) : 0;
+    if (r.lv.mode === 'attack' && i === r.wave && st.legEnds) {
+      // 进攻：这一段开了多远
+      const a = i > 0 ? st.legEnds[i - 1] : 220;
+      const b = st.legEnds[i] || a + 1;
+      k = clamp((st.head.wy - a) / (b - a), 0, 1);
+    }
     if (G.scr !== 'play' && i === r.wave) k = 0;
     ctx.fillStyle = '#3a2c20';
     roundRect(ctx, x + 1, y0, gw - 2, 10, 4);
@@ -1469,7 +1477,8 @@ function drawWaveBar(x0, y0, w) {
   ctx.lineTo(fx - 10, y0 - 2);
   ctx.lineTo(fx, y0 + 2);
   ctx.fill();
-  bigText(ctx, r.lv.boss ? '最后一波：铁头龙' : '最后一波是大波', x0 + w / 2, y0 + 26, 10, '#ffb0a0', LINE);
+  const lab = r.lv.mode === 'attack' ? (r.lv.boss ? '最后撞城门：弩车守着' : '最后一段撞城门') : r.lv.boss ? '最后一波：铁头龙' : '最后一波是大波';
+  bigText(ctx, lab, x0 + w / 2, y0 + 26, 10, '#ffb0a0', LINE);
   // 连碎计数
   const cb = G.combo;
   if (cb && cb.n >= 3 && G.t - cb.t < 1.2 && G.scr === 'play') {
@@ -1499,8 +1508,8 @@ function drawHud() {
   RD.drawGear(ctx, bx + 6, 36, 7, G.t);
   bigText(ctx, String(r.coins), bx + 18, 36, 13, '#ffd65a', LINE, 'left');
   // 守城：右上是波次进度条（材料在下面机关台看）；进攻：五行口袋
-  if (r.lv.mode === 'defend') drawWaveBar(214, 10, 136);
-  else D.ELS.forEach((e, i) => {
+  drawWaveBar(214, 10, 136);
+  if (false) D.ELS.forEach((e, i) => {
     const x = 214 + i * 28;
     ctx.fillStyle = D.EL[e].col;
     ctx.strokeStyle = LINE;
@@ -1526,7 +1535,7 @@ function drawHud() {
       bigText(ctx, '撑过这一波就赢了', FW / 2, 312, 14, '#fff8e6', LINE);
     } else {
       bigText(ctx, r.wave === 0 ? r.lv.story : '第 ' + (r.wave + 1) + ' 波', FW / 2, 280, r.wave === 0 ? 16 : 24, '#ffd65a', LINE);
-      bigText(ctx, r.lv.mode === 'defend' ? '合机关、摆点位，守住城门！' : '车自己开，你在驿站合机关、装上车', FW / 2, 308, 14, '#fff8e6', LINE);
+      bigText(ctx, r.lv.mode === 'defend' ? '合机关、摆点位，守住城门！' : '车自己开；你边开边合机关，拖上车', FW / 2, 308, 14, '#fff8e6', LINE);
     }
     ctx.restore();
   }
@@ -1658,7 +1667,7 @@ function drawRecipes() {
     bigText(ctx, '=', x + 64, y + 20, 13, '#fff8e6', LINE);
     machineIcon(m.id, 1, x + 88, y + 20, 11);
     bigText(ctx, m.name, x + 104, y + 20, 13, own ? '#fff8e6' : '#7a6a56', LINE, 'left');
-    if (r && G.scr !== 'map' && B.makeable(r).indexOf(m) >= 0 && (r.lv.mode === 'defend' || G.scr === 'shop')) {
+    if (r && G.scr !== 'map' && B.makeable(r).indexOf(m) >= 0 && (G.scr === 'play' || G.scr === 'shop')) {
       // 现在能合：整格可以点
       G.btns.push({ id: 'make_' + m.id, x, y, w: 164, h: 70 });
       ctx.strokeStyle = '#ffd65a';
@@ -1731,7 +1740,7 @@ function drawLiveBench() {
       ctx.fill();
       bigText(ctx, '+' + (mk.length - 5), FW - 14, y0 + 8, 10, '#fff8e6', LINE);
     }
-  } else bigText(ctx, '打碎龙节会掉材料；凑够两个就能合，能合的会出现在这里', FW / 2, y0 + 52, 11, '#cbb8a8', LINE);
+  } else bigText(ctx, (r.lv.mode === 'defend' ? '打碎龙节' : '打碎砖') + '会掉材料；凑够两个就能合，能合的会出现在这里', FW / 2, y0 + 52, 11, '#cbb8a8', LINE);
   // 第三行：手上的机关（按住拖到点位）
   bigText(ctx, '手上：', 12, y0 + 94, 11, '#cbb8a8', LINE, 'left');
   r.bench.forEach((m, i) => {
@@ -1741,7 +1750,32 @@ function drawLiveBench() {
     G.btns.push({ id: 'tray' + i, x: x - 15, y: y0 + 79, w: 30, h: 30 });
     machineIcon(m.id, m.tier, x, y0 + 93, 11, G.sel === i);
   });
-  if (r.bench.length && r.bench.length <= 5) bigText(ctx, '按住拖到点位', FW - 12, y0 + 94, 11, '#ffd65a', LINE, 'right');
+  if (r.bench.length && r.bench.length <= 5) bigText(ctx, r.lv.mode === 'defend' ? '按住拖到点位' : '按住拖到车格', FW - 12, y0 + 94, 11, '#ffd65a', LINE, 'right');
+  if (r.lv.mode === 'attack') drawCarStrip(y0 - 44);
+}
+// 进攻：机关台上面一排车上的格子（拖上来装、拖到一样的上面叠）
+function drawCarStrip(y) {
+  const r = G.r;
+  const n = r.slots.length;
+  const sw = Math.min(34, (FW - 70) / n - 3);
+  ctx.fillStyle = 'rgba(16,10,6,0.82)';
+  roundRect(ctx, 4, y - 4, FW - 8, sw + 8, 10);
+  ctx.fill();
+  bigText(ctx, '车上：', 12, y + sw / 2, 11, '#cbb8a8', LINE, 'left');
+  const hm = G.dragM && G.dragM.bi !== undefined ? r.bench[G.dragM.bi] : G.sel >= 0 ? r.bench[G.sel] : null;
+  r.slots.forEach((m, i) => {
+    const x = 56 + i * (sw + 3);
+    G.btns.push({ id: 'slot' + i, x, y, w: sw, h: sw });
+    const stk = canStack(m, hm);
+    ctx.fillStyle = stk ? '#6b4a1e' : '#4a3a2a';
+    ctx.strokeStyle = hm ? '#ffd65a' : LINE;
+    ctx.lineWidth = 1.5;
+    roundRect(ctx, x, y, sw, sw, 7);
+    ctx.fill();
+    ctx.stroke();
+    if (m && !(G.dragM && G.dragM.si === i && G.dragM.moved)) machineIcon(m.id, m.tier, x + sw / 2, y + sw / 2 - 1, sw * 0.32);
+    if (stk) bigText(ctx, '叠↑', x + sw - 6, y + 5, 9, '#ffd65a', LINE);
+  });
 }
 
 // —— 波间：属性卡 → 机关台 + 小店 ——
@@ -1811,36 +1845,27 @@ function drawShop() {
     bigText(ctx, '龙 ×' + pv.n + (pv.boss ? ' + 铁头龙' : '') + '，每条约 ' + pv.len0 + '–' + pv.len1 + ' 节', 206, 212, 10, '#fff8e6', LINE, 'left');
     pv.types.forEach((ty, i) => bigText(ctx, '· ' + (TN[ty] || ty), 206, 228 + i * 14, 9, '#e8c8a8', LINE, 'left'));
   } else {
-  // 机关台（进攻：在驿站合）——能合的直接列出来，点一下就合
-  D.ELS.forEach((e, i) => {
-    const x = 26 + i * 64;
-    ctx.fillStyle = r.mats[e] ? D.EL[e].col : '#3a3028';
-    ctx.strokeStyle = LINE;
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.arc(x + 14, 200, 13, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-    bigText(ctx, D.EL[e].name, x + 14, 200, 12, LINE, '#fff8e6');
-    bigText(ctx, '×' + r.mats[e], x + 36, 200, 13, r.mats[e] ? '#fff8e6' : '#7a6a56', LINE);
-  });
-  const mk = B.makeable(r);
-  drawBagua(FW / 2, 256, 26);
-  if (mk.length) {
-    mk.slice(0, 4).forEach((m, i) => {
-      const x = 12 + i * 86;
-      G.btns.push({ id: 'make_' + m.id, x, y: 226, w: 80, h: 58 });
-      ctx.fillStyle = '#3f6a2a';
-      ctx.strokeStyle = LINE;
-      ctx.lineWidth = 2;
-      roundRect(ctx, x, 226, 80, 58, 10);
-      ctx.fill();
-      ctx.stroke();
-      machineIcon(m.id, 1, x + 40, 246, 12);
-      bigText(ctx, m.name, x + 40, 266, 12, '#fff8e6', LINE);
-      bigText(ctx, m.els.map((e) => D.EL[e].name).join('+'), x + 40, 279, 9, '#d8e8c8', LINE);
-    });
-  } else bigText(ctx, '材料不够合；路上打碎砖会掉材料', FW / 2, 290, 12, '#cbb8a8', LINE);
+  // 进攻的驿站：合成在路上做；这里看下一段有什么（照 Thronefall 白天预告夜里的敌人）
+  const st = G.st;
+  const leg = st.leg;
+  const a = leg > 0 ? st.legEnds[leg - 1] : 0;
+  const b = st.legEnds[leg] || 1e9;
+  const last = leg >= st.legEnds.length - 1;
+  const bl = st.blocks.filter((x) => x.alive && x.wy > a && (x.wy <= b || last));
+  const towers = bl.filter((x) => x.kind === 'tower').length;
+  const bricks = bl.filter((x) => x.kind === 'brick');
+  const big = bricks.reduce((m, x) => Math.max(m, x.n), 0);
+  const laneN = [0, 0, 0, 0, 0];
+  bricks.forEach((x) => (laneN[Math.max(0, Math.min(4, Math.floor(x.x / A.CELL)))] += x.n));
+  const easy = laneN.indexOf(Math.min(...laneN));
+  bigText(ctx, '合机关在路上随时做；驿站挑属性、逛小店', FW / 2, 186, 11, '#cbb8a8', LINE);
+  ctx.fillStyle = last ? 'rgba(120,30,16,0.8)' : 'rgba(40,28,18,0.9)';
+  roundRect(ctx, 14, 200, FW - 28, 82, 10);
+  ctx.fill();
+  bigText(ctx, last ? '下一段：最后一段，撞开城门！' : '下一段', 26, 216, 13, last ? '#ffdf7a' : '#ffd65a', LINE, 'left');
+  bigText(ctx, '砖 ' + bricks.length + ' 块（最硬 ' + big + '）· 弩塔 ' + towers + ' 座' + (last ? ' · 城门 ' + st.gate.n : ''), 26, 238, 11, '#fff8e6', LINE, 'left');
+  bigText(ctx, '弩塔会射车：远程机关（连弩、火铳、雷链）先拆它', 26, 256, 10, '#e8c8a8', LINE, 'left');
+  bigText(ctx, '砖最少的是第 ' + (easy + 1) + ' 条道；车会自己找空的道走', 26, 272, 10, '#e8c8a8', LINE, 'left');
   }
   G.azAt = { x: FW / 2, y: 268 };
   // 小店
@@ -2061,7 +2086,7 @@ function drawBrief() {
   ctx.stroke();
   bigText(ctx, lv.id + (lv.boss ? ' · Boss' : '') + (lv.challenge ? ' · 挑战' : ''), FW / 2, 98, 20, '#ffd65a', LINE);
   wrap(lv.story, 30, 128, FW - 60, 14);
-  const mode = lv.mode === 'defend' ? '守城：边打边合机关，自己挑路边的点位放，射程圈里的才打得到' : (lv.car === 'dragon' ? '进攻：机关龙（' + metaNow().dragonLen + ' 格）' : '进攻：小工程车（' + metaNow().cartSlots + ' 格）') + '自己开，你在驿站合机关、装上车';
+  const mode = lv.mode === 'defend' ? '守城：边打边合机关，自己挑路边的点位放，射程圈里的才打得到' : (lv.car === 'dragon' ? '进攻：机关龙（' + metaNow().dragonLen + ' 格）' : '进攻：小工程车（' + metaNow().cartSlots + ' 格）') + '自己开，你边开边合机关、拖到车上的格子；驿站升级、买东西';
   wrap(mode, 30, 170, FW - 60, 12);
   const cb = D.BUILDERS.find((x) => x.id === meta.camp.builder);
   bigText(ctx, '机关师：' + cb.name + '（这一趟一直用他）', FW / 2, 230, 14, '#ffd65a', LINE);
