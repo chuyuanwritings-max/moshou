@@ -40,7 +40,7 @@ const scale = Math.min(W / FW, H / FH);
 const ox = (W - FW * scale) / 2;
 const oy = (H - FH * scale) / 2;
 const CITY = RC.CHAPTERS[0];
-const IMG = { bg: PF.loadImage('素材/bg_city.jpg'), hero: PF.loadImage('素材/hero.png'), azIdle: PF.loadImage('素材/azhu_idle.png'), azSwing: PF.loadImage('素材/azhu_swing.png') };
+const IMG = { bg: PF.loadImage('素材/bg_city.jpg'), hero: PF.loadImage('素材/hero.png'), azIdle: PF.loadImage('素材/azhu_idle.png'), azSwing: PF.loadImage('素材/azhu_swing.png'), pano: PF.loadImage('素材/pano_city.jpg') };
 
 // —— 阿铸的动作帧（AI 视频抽帧做的，代码只管放在哪、多大、什么时候播）——
 // 待机 7 帧往返播（1-2-…-7-6-…-2），每帧 160 毫秒；挥锤 12 帧，第 10 帧砸地（震屏、火花放在这一帧）
@@ -149,6 +149,7 @@ function startLevel(i) {
     G.cs = CS.levelPan(ctx, {
       id: lv.id,
       img: IMG.bg,
+      pano: IMG.pano,
       place: lv.id + ' · ' + lv.story,
       title: lv.mode === 'defend' ? (lv.boss ? '铁头龙来了！' : '机关长龙来了！') : lv.boss ? '弩车守着城门！' : '撞开城门！',
       drawFocus: (g, x, y) => drawPanFocus(g, x, y, lv),
@@ -174,8 +175,9 @@ function drawPanFocus(g, x, y, lv) {
       g.fillRect(-100, -100, 200, 200);
     }
     g.scale(k, k);
-    for (let i = 7; i >= 1; i--) RD.drawCar(g, -i * 22, Math.sin(i * 0.9) * 6, Math.PI / 2, i, 0, 0);
-    RD.drawHead(g, 0, 0, Math.PI / 2, 1, 0, lv.boss ? 1 : 0);
+    // 龙头朝左：冲着画面左边的边城爬过来
+    for (let i = 7; i >= 1; i--) RD.drawCar(g, i * 22, Math.sin(i * 0.9) * 6, -Math.PI / 2, i, 0, 0);
+    RD.drawHead(g, 0, 0, -Math.PI / 2, 1, 0, lv.boss ? 1 : 0);
   } else {
     // 城门：砖墙 + 拱门 + 门上的数字
     g.fillStyle = '#7a5a3a';

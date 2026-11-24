@@ -381,32 +381,36 @@ function chapter(ctx, o) {
   return start(ctx, tl, images, o.onEnd, o.sfx);
 }
 
-// F 运镜大图 → 每关开局：镜头摇过边城全景，停一下，「啪」地硬切推到这一关的敌人（Boss 关推到 Boss），出字
-// 现在用竖图 bg_city 横着裁一条拼成 3.6 屏宽的全景（等 MJ 出 2:1 横幅再换）。敌人用 o.drawFocus 画在全景上。
-const PANO_W = 1296;
+// F 运镜大图 → 每关开局：镜头从城楼摇过边城全景，停一下，「啪」地硬切推到这一关的敌人（Boss 关推到 Boss），出字
+// 全景用 MJ 出的横幅 pano_city.jpg（1536×660，2.33:1）；没加载到时退回把竖图 bg_city 横着裁一条。敌人用 o.drawFocus 画在全景上。
+// 镜头的单位是屏宽 / 屏高（360×720）。全景铺满屏高 → 宽 1676，左右能摇 ±1.83 屏宽。
 const PANO_H = 720;
-const FOCUS = [0.92, -0.06]; // 和模板 F 里硬切的 pan 一致：镜头中心 = 屏幕中心 + (0.92 屏宽, -0.06 屏高)
+const PAN_FROM = [-1.6, 0]; // 开头停在左边的城楼
+const PAN_SWEEP = [0.75, 0]; // 慢摇到土路尽头
+const FOCUS = [1.21, 0.22]; // 硬切停在龙身上：全景左起 76%、上起 72%（地平线 64% 下面的荒地上，不飘在天上）
+function panoW(o) {
+  return o.pano && o.pano.ok ? Math.round((PANO_H * o.pano.width) / o.pano.height) : 1296;
+}
 function panorama(o) {
-  return canvas(PANO_W, PANO_H, (g) => {
-    const img = o.img;
-    if (img && img.ok) {
-      const sc = PANO_W / img.width;
-      const h = img.height * sc;
-      const cy = h * 0.55; // 城墙、楼阁那一条
-      // 按原图坐标裁一条：起点 y = (cy - 全景高/2) / 缩放，高 = 全景高 / 缩放
-      g.drawImage(img, 0, (cy - PANO_H / 2) / sc, img.width, PANO_H / sc, 0, 0, PANO_W, PANO_H);
+  const PW = panoW(o);
+  return canvas(PW, PANO_H, (g) => {
+    if (o.pano && o.pano.ok) {
+      g.drawImage(o.pano, 0, 0, PW, PANO_H); // 整张铺满
+    } else if (o.img && o.img.ok) {
+      // 退路：竖图横着裁一条（城墙、楼阁那一带）
+      const img = o.img;
+      const sc = PW / img.width;
+      const cy = img.height * sc * 0.55;
+      g.drawImage(img, 0, (cy - PANO_H / 2) / sc, img.width, PANO_H / sc, 0, 0, PW, PANO_H);
     } else {
       const gr = g.createLinearGradient(0, 0, 0, PANO_H);
       gr.addColorStop(0, '#5a3a1e');
       gr.addColorStop(1, '#1a120c');
       g.fillStyle = gr;
-      g.fillRect(0, 0, PANO_W, PANO_H);
+      g.fillRect(0, 0, PW, PANO_H);
     }
-    // 黄昏压一层暖色
-    g.fillStyle = 'rgba(60,24,8,0.25)';
-    g.fillRect(0, 0, PANO_W, PANO_H);
-    // 敌人画在镜头最后停住的地方
-    const fx = PANO_W / 2 + FOCUS[0] * W;
+    // 敌人画在镜头最后硬切停住的地方
+    const fx = PW / 2 + FOCUS[0] * W;
     const fy = PANO_H / 2 + FOCUS[1] * H;
     if (o.drawFocus) o.drawFocus(g, fx, fy);
   });
@@ -414,8 +418,15 @@ function panorama(o) {
 function levelPan(ctx, o) {
   const tl = clone(T.pan);
   tl.key = '_lv' + o.id;
+  // 退路全景只有 1296 宽，起点不能摇出边
+  const lim = (panoW(o) / 2 - W / 2) / W - 0.05;
   tl.beats.forEach((b) => {
     (b.fx || []).forEach((f) => {
+      if (f.fx === 'camera' && f.pan) {
+        if (b.id === 'black') f.pan = [Math.max(-lim, PAN_FROM[0]), PAN_FROM[1]];
+        else if (b.id === 'sweep') f.pan = PAN_SWEEP.slice();
+        else if (b.id === 'punch') f.pan = FOCUS.slice();
+      }
       if (f.fx === 'text' && f.size >= 30) f.str = o.title;
       else if (f.fx === 'text' && f.str) {
         f.str = o.place;
@@ -6575,7 +6586,7 @@ const scale = Math.min(W / FW, H / FH);
 const ox = (W - FW * scale) / 2;
 const oy = (H - FH * scale) / 2;
 const CITY = RC.CHAPTERS[0];
-const IMG = { bg: PF.loadImage('素材/bg_city.jpg'), hero: PF.loadImage('素材/hero.png'), azIdle: PF.loadImage('素材/azhu_idle.png'), azSwing: PF.loadImage('素材/azhu_swing.png') };
+const IMG = { bg: PF.loadImage('素材/bg_city.jpg'), hero: PF.loadImage('素材/hero.png'), azIdle: PF.loadImage('素材/azhu_idle.png'), azSwing: PF.loadImage('素材/azhu_swing.png'), pano: PF.loadImage('素材/pano_city.jpg') };
 
 // —— 阿铸的动作帧（AI 视频抽帧做的，代码只管放在哪、多大、什么时候播）——
 // 待机 7 帧往返播（1-2-…-7-6-…-2），每帧 160 毫秒；挥锤 12 帧，第 10 帧砸地（震屏、火花放在这一帧）
@@ -6684,6 +6695,7 @@ function startLevel(i) {
     G.cs = CS.levelPan(ctx, {
       id: lv.id,
       img: IMG.bg,
+      pano: IMG.pano,
       place: lv.id + ' · ' + lv.story,
       title: lv.mode === 'defend' ? (lv.boss ? '铁头龙来了！' : '机关长龙来了！') : lv.boss ? '弩车守着城门！' : '撞开城门！',
       drawFocus: (g, x, y) => drawPanFocus(g, x, y, lv),
@@ -6709,8 +6721,9 @@ function drawPanFocus(g, x, y, lv) {
       g.fillRect(-100, -100, 200, 200);
     }
     g.scale(k, k);
-    for (let i = 7; i >= 1; i--) RD.drawCar(g, -i * 22, Math.sin(i * 0.9) * 6, Math.PI / 2, i, 0, 0);
-    RD.drawHead(g, 0, 0, Math.PI / 2, 1, 0, lv.boss ? 1 : 0);
+    // 龙头朝左：冲着画面左边的边城爬过来
+    for (let i = 7; i >= 1; i--) RD.drawCar(g, i * 22, Math.sin(i * 0.9) * 6, -Math.PI / 2, i, 0, 0);
+    RD.drawHead(g, 0, 0, -Math.PI / 2, 1, 0, lv.boss ? 1 : 0);
   } else {
     // 城门：砖墙 + 拱门 + 门上的数字
     g.fillStyle = '#7a5a3a';
