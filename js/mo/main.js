@@ -270,6 +270,7 @@ function onTouch(type, id, px, py) {
           // 场上的拖回手上
           const m = G.r.slots[d.si];
           G.r.slots[d.si] = null;
+          if (G.scr === 'play') m.installT = INSTALL_SEC; // 收回手上再放，也要重新装
           const same = G.r.bench.find((x) => x.id === m.id && x.tier + m.tier <= 4);
           if (same) same.tier += m.tier;
           else G.r.bench.push(m);
@@ -279,6 +280,12 @@ function onTouch(type, id, px, py) {
           const to = +tgt.slice(4);
           const res = B.moveSlot(G.r, d.si, to);
           if (res && res.full) pop('已经满阶', FW / 2, 300, '#ff9a6a', 15);
+          if (res && G.scr === 'play' && (res.res === 'move' || res.res === 'swap')) {
+            // 波中挪动 / 对调：挪过去的（对调时两件都）要装 3 秒才开火
+            G.r.slots[to].installT = INSTALL_SEC;
+            if (res.res === 'swap' && G.r.slots[d.si]) G.r.slots[d.si].installT = INSTALL_SEC;
+            showTip('install');
+          }
           if (res) {
             snd(res.res === 'merge' ? 'evolve' : 'clang', 0, 0.5);
             if (res.res === 'merge') {
@@ -460,6 +467,11 @@ function press(id) {
       if (res && res.blocked) pop('一夫当关：只能放 1 件', FW / 2, 560, '#ff8a5a', 15);
       else if (res && res.full) pop('已经满阶（最高 4 阶）', FW / 2, 300, '#ff9a6a', 15);
       else if (res) {
+        if (res.res === 'swap' && G.scr === 'play') {
+          // 换下来的那件回到手上：再放出去也要装 3 秒（不然等于免费挪）
+          const back = r.bench[r.bench.length - 1];
+          if (back) back.installT = INSTALL_SEC;
+        }
         snd(res.res === 'merge' ? 'evolve' : 'clang', 0, 0.5);
         const p = F.slotPos(si);
         pop(res.res === 'merge' ? '叠成 ' + res.slot.tier + ' 阶！' : '放下 ' + D.M[res.slot.id].name, p.x, p.y - 26, '#ffd65a', 15);
@@ -492,6 +504,7 @@ function press(id) {
   } else if (id === 'refresh') {
     if (!B.refresh(r)) snd('alarm', 200, 0.3);
   } else if (id === 'nextWave') {
+    r.slots.concat(r.bench).forEach((m) => m && (m.installT = 0)); // 波间挪的不用等
     G.scr = 'play';
     G.benchSel = [];
     G.sel = -1;
@@ -594,6 +607,7 @@ const TIPS = {
   recipes: [{ text: '不一样的元素也能合！比如木 + 火 = 火龙车、金 + 水 = 雷链。能合的会直接列出来；全部组合点「合成表」看', target: 'make_*|recipes' }],
   merge: [{ text: '手上这件和场上某件同名！把它拖到标着「叠↑」的点位（进攻是车格），阶数相加（最高 4 阶），打得更狠。场上的机关也能直接拖到另一件一样的上面叠', target: 'spot*|slot*' }],
   mergeShop: [{ text: '手上这件和上面某格同名！把它拖到标着「叠」的格子，阶数相加（最高 4 阶）', target: 'slot*' }],
+  install: [{ text: '打的时候挪了位置：机关要先「装」3 秒（看那一圈转满）才开火。所以先想好摆哪；波间挪不用等', target: 'spot*|slot*' }],
   buySpot: [{ text: '铜钱够了：点「修」开一个新点位，多放一件机关', target: 'buySpot' }],
   cards: [{ text: '升级了！挑一个属性，这一关一直有效。圆圈的颜色就是五行', target: 'card*' }],
   shop: [
@@ -1100,6 +1114,21 @@ function drawBg(dark) {
   ctx.fillRect(0, 0, FW, FH);
 }
 
+// 波中挪过的机关：压暗 + 一圈进度 +「装」字，转满才开火
+const INSTALL_SEC = 3;
+function drawInstall(x, y, R, left) {
+  const k = 1 - left / INSTALL_SEC;
+  ctx.fillStyle = 'rgba(10,6,4,0.55)';
+  ctx.beginPath();
+  ctx.arc(x, y, R, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#ffd65a';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.arc(x, y, R, -Math.PI / 2, -Math.PI / 2 + k * Math.PI * 2);
+  ctx.stroke();
+  bigText(ctx, '装', x, y, Math.max(10, R * 0.7), '#ffd65a', LINE);
+}
 // 名字第一个字撞了的，换一个字
 const ICON_CH = { huixuan: '刃', huochong: '铳' };
 // 机关图标：五行颜色的圆 + 名字第一个字 + 阶数小点
@@ -1309,7 +1338,10 @@ function drawDefend() {
       return;
     }
     G.btns.push({ id: 'spot' + i, x: p.x - 24, y: p.y - 30, w: 48, h: 48 });
-    if (mc && !(G.dragM && G.dragM.si === i && G.dragM.moved)) machineIcon(mc.id, mc.tier, p.x, p.y - 14, 14, G.spotView && G.spotView.i === i);
+    if (mc && !(G.dragM && G.dragM.si === i && G.dragM.moved)) {
+      machineIcon(mc.id, mc.tier, p.x, p.y - 14, 14, G.spotView && G.spotView.i === i);
+      if (mc.installT > 0) drawInstall(p.x, p.y - 14, 19, mc.installT);
+    }
     if (mc && hand && canStack(mc, r.bench[G.sel])) {
       ctx.fillStyle = '#c8402c';
       roundRect(ctx, p.x + 4, p.y - 38, 30, 18, 9);
@@ -1842,7 +1874,10 @@ function drawCarStrip(y) {
     roundRect(ctx, x, y, sw, sw, 7);
     ctx.fill();
     ctx.stroke();
-    if (m && !(G.dragM && G.dragM.si === i && G.dragM.moved)) machineIcon(m.id, m.tier, x + sw / 2, y + sw / 2 - 1, sw * 0.32);
+    if (m && !(G.dragM && G.dragM.si === i && G.dragM.moved)) {
+      machineIcon(m.id, m.tier, x + sw / 2, y + sw / 2 - 1, sw * 0.32);
+      if (m.installT > 0) drawInstall(x + sw / 2, y + sw / 2 - 1, sw * 0.45, m.installT);
+    }
     if (stk) bigText(ctx, '叠↑', x + sw - 6, y + 5, 9, '#ffd65a', LINE);
   });
 }

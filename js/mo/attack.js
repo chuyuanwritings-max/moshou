@@ -229,6 +229,11 @@ function stepMachines(st, dt) {
     if (!mc) return;
     const m = D.M[mc.id];
     const pos = segs[Math.min(segs.length - 1, st.car === 'dragon' ? i + 1 : 1)] || st.head;
+    // 波中挪过位置：先「安装」3 秒，装好才开火（Cc 11-24 定，防拖着机关追龙）
+    if (mc.installT > 0) {
+      mc.installT -= dt;
+      return;
+    }
     st.cd[i] -= dt;
     if (st.cd[i] > 0) return;
     const cd = m.cd * D.TIER_CD[mc.tier - 1] * B.cdMul(r);

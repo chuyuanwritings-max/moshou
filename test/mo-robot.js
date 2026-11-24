@@ -126,6 +126,8 @@ const fs = require('fs');
   check(await g(() => !__mo.G.r.slots[0] && __mo.G.r.slots[1] && __mo.G.r.slots[1].id === 'nu' && __mo.G.r.slots[1].tier === 2), '场上的连弩拖到另一件连弩上：直接叠成 2 阶');
   await dragBtn('spot3', 'spot2');
   check(await g(() => __mo.G.r.slots[2].id === 'pi' && __mo.G.r.slots[3].id === 'nu'), '场上两件不一样的拖到一起：对调位置');
+  check(await g(() => __mo.G.r.slots[2].installT > 0 && __mo.G.r.slots[3].installT > 0), '波中挪过的两件都要「装」3 秒才开火');
+  await snap('mo04d_安装中');
   // 打的时候的引导卡都看过了（免得加速时停住）
   await g(() => { const t = __mo.meta.tips || (__mo.meta.tips = {}); ['combine2', 'merge', 'buySpot', 'recipes'].forEach((k) => (t[k] = 1)); __mo.G.tip = null; });
   await page.waitForTimeout(800);
