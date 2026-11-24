@@ -5704,23 +5704,23 @@ const BUILDERS = [
 // mode：defend / attack；car：small / dragon；waves：几波；boss：铁头龙 / 巨弩城楼
 const LEVELS = [
   { id: '1-1', story: '公输家的机关长龙来攻边城', mode: 'defend', waves: 3, hp: 1, len: 14, teach: '龙掉的材料飞进下面；点两个合机关，再点路边亮着的点位放下' },
-  { id: '1-2', story: '长龙退了，城外留下一串车辙', mode: 'defend', waves: 3, hp: 1.2, len: 16, teach: '两件一样的机关叠在一起，升一阶' },
+  { id: '1-2', story: '长龙退了，城外留下一串车辙', mode: 'defend', waves: 3, hp: 1.4, len: 16, teach: '两件一样的机关叠在一起，升一阶' },
   { id: '1-3', story: '顺着车辙找到公输家的前哨', mode: 'attack', car: 'small', waves: 3, num: 5, teach: '车自己往上冲；到驿站合机关，点车上的格子装上去' },
-  { id: '1-4', story: '公输家推来铁头龙撞城门', mode: 'defend', waves: 3, hp: 1.5, len: 18, boss: 'tietou', types: { shield: 0.12, powder: 0.08 } },
-  { id: '1-5', story: '修城墙时，第二批长龙杀到', mode: 'defend', waves: 3, hp: 1.8, len: 20, types: { shield: 0.15, powder: 0.1 } },
+  { id: '1-4', story: '公输家推来铁头龙撞城门', mode: 'defend', waves: 3, hp: 2.0, len: 18, boss: 'tietou', types: { shield: 0.12, powder: 0.08 } },
+  { id: '1-5', story: '修城墙时，第二批长龙杀到', mode: 'defend', waves: 3, hp: 2.6, len: 20, types: { shield: 0.15, powder: 0.1 } },
   { id: '1-6', story: '斥候发现城外十里的工坊', mode: 'attack', car: 'small', waves: 3, num: 6, types: { powder: 0.1, iron: 0.12 } },
-  { id: '1-7', story: '工坊的援兵来夺城', mode: 'defend', waves: 3, hp: 2.2, len: 22, types: { shield: 0.18, powder: 0.12 } },
+  { id: '1-7', story: '工坊的援兵来夺城', mode: 'defend', waves: 3, hp: 3.4, len: 22, types: { shield: 0.18, powder: 0.12 } },
   { id: '1-8', story: '开机关龙反攻工坊', mode: 'attack', car: 'dragon', waves: 3, num: 7, boss: 'ballista', types: { powder: 0.1, iron: 0.14 } },
-  { id: '1-c1', story: '挑战「只准用火」：机关台只能放火材料', mode: 'defend', waves: 3, hp: 2, len: 22, challenge: 'onlyFire', types: { shield: 0.15, powder: 0.1 } },
+  { id: '1-c1', story: '挑战「只准用火」：机关台只能放火材料', mode: 'defend', waves: 3, hp: 3.0, len: 22, challenge: 'onlyFire', types: { shield: 0.15, powder: 0.1 } },
   { id: '1-c2', story: '挑战「急行军」：车快一倍，砖也多一倍', mode: 'attack', car: 'small', waves: 3, num: 7, challenge: 'rush', types: { powder: 0.1, iron: 0.12 } },
 ];
-const WAVE_SEC = [20, 25, 30, 35, 40];
+const WAVE_SEC = [32, 38, 44, 50, 56];
 
 // —— 局外 ——
 const META = {
   slots: { name: '守城点位', base: 3, max: 8, cost: [150, 400, 800, 1400, 2200] },
   bench: { name: '机关台格数', base: 2, max: 3, cost: [800] }, // 第一版只到 3 格（还没有三合机关）
-  wallHp: { name: '城墙血', base: 100, step: 10, max: 10, cost: (lv) => 60 + lv * 60 },
+  wallHp: { name: '城墙血', base: 150, step: 15, max: 10, cost: (lv) => 60 + lv * 60 },
   cartSlots: { name: '小工程车格子', base: 2, max: 5, cost: [300, 1200, 4000] },
   dragonLen: { name: '机关龙节数', base: 4, max: 12, cost: (lv) => 400 + lv * 400 },
 };
@@ -5748,16 +5748,19 @@ const WALL_Y = 590;
 // 点位：城外高低不同的箭楼、土台，散在路边（路：顶上往下 → y96 往右 → x314 往下 → y310 往左 → x46 往下 → y524 往右 → 城门）
 // 按解锁顺序排：先开离城门近的
 const SPOTS = [
-  // 照《王国保卫战》摆：弯道内侧一个点盖两段路；三个点交叉盖住同一段是杀伤区；入口最没用，最后开
-  { x: 264, y: 260, name: '东弯箭楼', why: '右边竖路转中间横路的弯道内侧，盖两段' },
-  { x: 96, y: 360, name: '西弯箭楼', why: '中间横路转左边竖路的弯道内侧，和东弯夹住中间横路' },
-  { x: 180, y: 360, name: '中路土台', why: '中间横路正下方，和两个弯道点交叉：第一个杀伤区' },
-  { x: 96, y: 474, name: '南弯箭楼', why: '左边竖路转下面横路的弯道内侧，接住漏下来的' },
-  { x: 228, y: 548, name: '城门东台', why: '贴着进城的最后一段：最后一道防线' },
-  { x: 264, y: 146, name: '东北弯台', why: '上面横路转右边竖路的弯道内侧，适合放减速，拖慢进杀伤区' },
-  { x: 110, y: 146, name: '入口箭楼', why: '入口最没用，倒数第二个开，补漏、提前削血' },
-  { x: 180, y: 474, name: '城门北台', why: '最后一个弯的外侧，和南弯、城门东台组成第二个杀伤区' },
+  // 路：顶上往下 → y96 往右 → x314 往下 → y239 往左 → x46 往下 → y381 往右 → x314 往下 → y524 往左 → 城门
+  // 照《王国保卫战》摆：弯道内侧一个点盖两段；两条横路中间的点离两条路一样远，三个点交叉成杀伤区；入口最后开
+  { x: 264, y: 452, name: '东南弯台', why: '第三、四条横路之间的右弯内侧，盖三段' },
+  { x: 96, y: 310, name: '西弯箭楼', why: '第二、三条横路之间的左弯内侧，盖三段' },
+  { x: 180, y: 452, name: '南中土台', why: '第三、四条横路正中间，和东南弯台交叉：城门前的杀伤区' },
+  { x: 264, y: 167, name: '东北弯台', why: '第一、二条横路之间的右弯内侧，放减速拖慢' },
+  { x: 228, y: 572, name: '城门东台', why: '贴着进城的最后一段，最后一道防线' },
+  { x: 180, y: 310, name: '中路土台', why: '第二、三条横路正中间，和西弯交叉：中间的杀伤区' },
+  { x: 96, y: 167, name: '入口箭楼', why: '靠入口，盖得少，后开' },
+  { x: 130, y: 572, name: '城门西台', why: '进城最后一段的另一边，和城门东台夹住' },
 ];
+// 关内花铜钱开下一个点位（一关里越开越贵）
+const SPOT_COST = [40, 60, 90, 130, 180];
 const BOLT_CD = 0.36;
 
 function slotPos(i) {
@@ -5768,7 +5771,7 @@ function rangeOf(r, m) {
 }
 
 function newDefend(r) {
-  const path = P.build(3, true, 'snake');
+  const path = P.build(4, true, 'snake');
   const st = {
     r, path, t: 0, mode: 'play', events: [],
     px: D.FIELD.w / 2, targetX: D.FIELD.w / 2, boltCd: 0,
@@ -5805,7 +5808,7 @@ function startWave(st) {
 function spawnDragon(st, boss) {
   const r = st.r;
   const lv = r.lv;
-  const len = boss ? lv.len + 8 : lv.len + r.wave * 3 + st.spawned * 2;
+  const len = boss ? lv.len + 8 : Math.max(8, lv.len - 4 + r.wave * 3 + st.spawned * 2);
   const base = (4 + r.wave * 3 + st.spawned * 1.5) * lv.hp;
   const segs = [];
   for (let i = 0; i < len; i++) {
@@ -5815,7 +5818,7 @@ function spawnDragon(st, boss) {
     if (boss && i === 0) hp *= 10;
     segs.push({ hp, hp0: hp, type, s: -i * GAP - 10, alive: true, burnT: 0, frozen: 0, chest: false, id: i });
   }
-  st.dragons.push({ segs, len0: len, v: (52 + r.wave * 5 + lv.hp * 5) * (boss ? 0.7 : 1), boss, dashCd: 6 + r.R() * 3, glow: 0, dash: 0, slowT: 0, slowK: 0, freezeT: 0, blockT: 0 });
+  st.dragons.push({ segs, len0: len, v: (36 + r.wave * 5 + lv.hp * 4) * (boss ? 0.7 : 1), boss, dashCd: 6 + r.R() * 3, glow: 0, dash: 0, slowT: 0, slowK: 0, freezeT: 0, blockT: 0 });
   st.spawned++;
 }
 
@@ -5921,7 +5924,7 @@ function moveDragons(st, dt) {
     // 撞城门：头一节冲进门，城墙掉血，这一节没了
     if (head.s >= st.path.len) {
       head.alive = false;
-      const dmg = d.boss && head.id === 0 ? 30 : 3 + head.hp / 25;
+      const dmg = d.boss && head.id === 0 ? 25 : 2 + head.hp / 30;
       const real = B.hurtSelf(r, dmg);
       ev(st, { t: 'breach', dmg: Math.round(real), boss: d.boss && head.id === 0 });
       if (r.hp <= 0) {
@@ -5993,6 +5996,8 @@ function stepMachines(st, dt) {
     if (!mc) return;
     const m = D.M[mc.id];
     const pos = slotPos(i);
+    if (st.cd[i] === undefined) st.cd[i] = 0.5;
+    if (st.heat[i] === undefined) st.heat[i] = 0;
     st.cd[i] -= dt;
     if (st.cd[i] > 0) return;
     const cd = m.cd * D.TIER_CD[mc.tier - 1] * B.cdMul(r);
@@ -6248,7 +6253,21 @@ function botX(st) {
   return best ? segXY(st, best).x : D.FIELD.w / 2;
 }
 
-module.exports = { newDefend, step, nextWave, slotPos, rangeOf, segXY, alive, botX, SPOTS, WALL_Y, PLAYER_Y, SEG_R, GAP };
+// 花铜钱开下一个点位
+function spotCost(r) {
+  const n = r.spotsBought || 0;
+  return r.slots.length >= SPOTS.length ? null : SPOT_COST[Math.min(n, SPOT_COST.length - 1)];
+}
+function buySpot(r) {
+  const c = spotCost(r);
+  if (c === null || r.coins < c) return false;
+  r.coins -= c;
+  r.spotsBought = (r.spotsBought || 0) + 1;
+  r.slots.push(null);
+  return true;
+}
+
+module.exports = { spotCost, buySpot, newDefend, step, nextWave, slotPos, rangeOf, segXY, alive, botX, SPOTS, WALL_Y, PLAYER_Y, SEG_R, GAP };
 
 });
 __def("js/mo/main.js", function (module, exports, require) {
@@ -6389,6 +6408,8 @@ function startLevel(i) {
   G.benchSel = [];
   G.sel = -1;
   G.teach = lv.teach && !meta.seenTeach[lv.id] ? { text: lv.teach, t: 0 } : null;
+  G.tut = lv.id === '1-1' && !meta.tutDone ? { step: 0, t: 0 } : null;
+  if (G.tut) G.teach = null;
   meta.seenTeach[lv.id] = 1;
   saveMeta();
   handleEvents();
@@ -6466,6 +6487,7 @@ function press(id) {
     const el = id.slice(4);
     const used = G.benchSel.filter((e) => e === el).length;
     if (G.benchSel.length < r.bench2 && r.mats[el] > used) G.benchSel.push(el);
+    tutAdvance('mat');
   } else if (id.startsWith('bs')) {
     G.benchSel.splice(+id.slice(2), 1);
   } else if (id === 'combine') {
@@ -6473,6 +6495,7 @@ function press(id) {
     if (mc) {
       G.benchSel = [];
       G.sel = r.bench.length - 1;
+      tutAdvance('combine');
       azSwing(() => {
         snd('clang', 0, 0.6);
         snd('upgrade', 0, 0.5);
@@ -6488,6 +6511,17 @@ function press(id) {
   } else if (id.startsWith('tray')) {
     const i = +id.slice(4);
     G.sel = G.sel === i ? -1 : i;
+  } else if (id === 'buySpot') {
+    if (F.buySpot(r)) {
+      snd('upgrade', 0, 0.6);
+      const p = F.slotPos(r.slots.length - 1);
+      sparks(p.x, p.y, 14, '#ffd65a');
+      pop('修好新点位！', p.x, p.y - 30, '#ffd65a', 15);
+      tutAdvance('buySpot');
+    } else {
+      snd('alarm', 200, 0.3);
+      pop('铜钱不够', FW / 2, 600, '#ff8a5a', 14);
+    }
   } else if (id.startsWith('spot')) {
     const si = +id.slice(4);
     if (G.sel >= 0) {
@@ -6497,6 +6531,7 @@ function press(id) {
         snd(res.res === 'merge' ? 'evolve' : 'clang', 0, 0.5);
         const p = F.slotPos(si);
         pop(res.res === 'merge' ? '叠成 ' + res.slot.tier + ' 阶！' : '放下 ' + D.M[res.slot.id].name, p.x, p.y - 26, '#ffd65a', 15);
+        tutAdvance('place');
         G.spotView = { i: si, t: 1.6 };
       }
       G.sel = -1;
@@ -6562,6 +6597,63 @@ function buyMeta(k) {
   meta[META_KEYS[k]]++;
   saveMeta();
   snd('upgrade', 0, 0.6);
+}
+
+// —— 第一关教学：点两次金 → 点合 → 点亮着的点位 → 龙出发 ——
+const TUT = [
+  { text: '龙要来了！先打一件机关：点两次「金」', target: 'mat_jin' },
+  { text: '金 + 金 = 连弩。点「合」，阿铸打一件', target: 'combine' },
+  { text: '点路边亮着的点位，把连弩放下（圈里的才打得到）', target: 'spot' },
+  { text: '放好了！龙来了。打碎龙节会掉材料，飞到下面', target: null },
+];
+function tutAdvance(what) {
+  const T = G.tut;
+  if (!T) return;
+  if (T.step === 0 && what === 'mat' && G.benchSel.length >= 2) T.step = 1;
+  else if (T.step === 1 && what === 'combine') T.step = 2;
+  else if (T.step === 2 && what === 'place') {
+    T.step = 3;
+    T.t = 0;
+    meta.tutDone = true;
+    saveMeta();
+  }
+}
+function drawTut() {
+  const T = G.tut;
+  const step = TUT[T.step];
+  // 指着要点的东西
+  const b = step.target === 'spot' ? G.btns.find((x) => x.id.startsWith('spot') && !G.r.slots[+x.id.slice(4)]) : step.target ? G.btns.find((x) => x.id === step.target) : null;
+  if (b) {
+    const k = 0.5 + 0.5 * Math.sin(G.t * 8);
+    ctx.strokeStyle = 'rgba(255,214,90,' + (0.6 + 0.4 * k) + ')';
+    ctx.lineWidth = 4;
+    roundRect(ctx, b.x - 4 - k * 3, b.y - 4 - k * 3, b.w + 8 + k * 6, b.h + 8 + k * 6, 12);
+    ctx.stroke();
+    // 小手
+    const hx = b.x + b.w / 2 + 14;
+    const hy = b.y + b.h / 2 + 10 + k * 6;
+    ctx.fillStyle = '#fff8e6';
+    ctx.strokeStyle = LINE;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(hx, hy);
+    ctx.lineTo(hx + 10, hy + 22);
+    ctx.lineTo(hx + 3, hy + 20);
+    ctx.lineTo(hx - 2, hy + 28);
+    ctx.lineTo(hx - 6, hy + 18);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  }
+  const y = T.step === 2 ? 70 : 560;
+  ctx.fillStyle = 'rgba(26,18,12,0.92)';
+  ctx.strokeStyle = '#ffd65a';
+  ctx.lineWidth = 2;
+  roundRect(ctx, 14, y, FW - 28, 54, 12);
+  ctx.fill();
+  ctx.stroke();
+  bigText(ctx, '第 ' + (Math.min(T.step, 2) + 1) + ' 步 / 3', 28, y + 16, 11, '#ffd65a', LINE, 'left');
+  wrap(step.text, 28, y + 36, FW - 56, 13);
 }
 
 // 机关台上做好的机关，自动摆上城墙 / 车：有一样的就叠上去升阶，没有就放空位
@@ -6775,7 +6867,12 @@ function frame() {
     G.hitstop -= dt;
     dt *= 0.2;
   }
-  if (G.scr === 'play' && G.st) {
+  if (G.tut) {
+    G.tut.t += dt;
+    if (G.tut.step >= 3 && G.tut.t > 3.5) G.tut = null;
+  }
+  const tutHold = G.tut && G.tut.step < 3 && !G.bot;
+  if (G.scr === 'play' && G.st && !tutHold) {
     acc += dt * G.speed;
     let n = 0;
     while (acc >= 1 / 60 && n++ < 40 && G.scr === 'play') {
@@ -6873,6 +6970,7 @@ function render() {
     ctx.restore();
     drawHud();
     if (G.scr === 'play' && G.r.lv.mode === 'defend') drawLiveBench();
+    if (G.tut && G.scr === 'play') drawTut();
     if (G.scr === 'shop') drawShop();
     if (G.scr === 'result') drawResult();
   }
@@ -7087,7 +7185,15 @@ function drawDefend() {
     ctx.fill();
     ctx.stroke();
     if (!open) {
-      bigText(ctx, '锁', p.x, p.y + 2, 11, '#a89880', LINE);
+      const cost = i === r.slots.length ? F.spotCost(r) : null;
+      if (cost !== null) {
+        const can = r.coins >= cost;
+        G.btns.push({ id: 'buySpot', x: p.x - 26, y: p.y - 22, w: 52, h: 40 });
+        ctx.fillStyle = can ? 'rgba(200,150,40,0.9)' : 'rgba(60,48,36,0.85)';
+        roundRect(ctx, p.x - 26, p.y - 4, 52, 18, 9);
+        ctx.fill();
+        bigText(ctx, '修 ' + cost, p.x, p.y + 5, 11, can ? '#fff8e6' : '#a89880', LINE);
+      } else bigText(ctx, '锁', p.x, p.y + 2, 11, '#a89880', LINE);
       return;
     }
     G.btns.push({ id: 'spot' + i, x: p.x - 24, y: p.y - 30, w: 48, h: 48 });
@@ -7317,7 +7423,7 @@ function drawHud() {
     bigText(ctx, D.EL[e].name, x, 18, 10, LINE, '#fff8e6');
     bigText(ctx, String(r.mats[e]), x, 38, 12, '#fff8e6', LINE);
   });
-  if (G.banner > 0 && G.scr === 'play') {
+  if (G.banner > 0 && G.scr === 'play' && !(G.tut && G.tut.step < 3)) {
     ctx.save();
     ctx.globalAlpha = clamp(G.banner / 0.3, 0, 1);
     ctx.fillStyle = 'rgba(20,14,10,0.8)';

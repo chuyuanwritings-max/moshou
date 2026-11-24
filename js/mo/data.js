@@ -139,23 +139,23 @@ const BUILDERS = [
 // mode：defend / attack；car：small / dragon；waves：几波；boss：铁头龙 / 巨弩城楼
 const LEVELS = [
   { id: '1-1', story: '公输家的机关长龙来攻边城', mode: 'defend', waves: 3, hp: 1, len: 14, teach: '龙掉的材料飞进下面；点两个合机关，再点路边亮着的点位放下' },
-  { id: '1-2', story: '长龙退了，城外留下一串车辙', mode: 'defend', waves: 3, hp: 1.2, len: 16, teach: '两件一样的机关叠在一起，升一阶' },
+  { id: '1-2', story: '长龙退了，城外留下一串车辙', mode: 'defend', waves: 3, hp: 1.4, len: 16, teach: '两件一样的机关叠在一起，升一阶' },
   { id: '1-3', story: '顺着车辙找到公输家的前哨', mode: 'attack', car: 'small', waves: 3, num: 5, teach: '车自己往上冲；到驿站合机关，点车上的格子装上去' },
-  { id: '1-4', story: '公输家推来铁头龙撞城门', mode: 'defend', waves: 3, hp: 1.5, len: 18, boss: 'tietou', types: { shield: 0.12, powder: 0.08 } },
-  { id: '1-5', story: '修城墙时，第二批长龙杀到', mode: 'defend', waves: 3, hp: 1.8, len: 20, types: { shield: 0.15, powder: 0.1 } },
+  { id: '1-4', story: '公输家推来铁头龙撞城门', mode: 'defend', waves: 3, hp: 2.0, len: 18, boss: 'tietou', types: { shield: 0.12, powder: 0.08 } },
+  { id: '1-5', story: '修城墙时，第二批长龙杀到', mode: 'defend', waves: 3, hp: 2.6, len: 20, types: { shield: 0.15, powder: 0.1 } },
   { id: '1-6', story: '斥候发现城外十里的工坊', mode: 'attack', car: 'small', waves: 3, num: 6, types: { powder: 0.1, iron: 0.12 } },
-  { id: '1-7', story: '工坊的援兵来夺城', mode: 'defend', waves: 3, hp: 2.2, len: 22, types: { shield: 0.18, powder: 0.12 } },
+  { id: '1-7', story: '工坊的援兵来夺城', mode: 'defend', waves: 3, hp: 3.4, len: 22, types: { shield: 0.18, powder: 0.12 } },
   { id: '1-8', story: '开机关龙反攻工坊', mode: 'attack', car: 'dragon', waves: 3, num: 7, boss: 'ballista', types: { powder: 0.1, iron: 0.14 } },
-  { id: '1-c1', story: '挑战「只准用火」：机关台只能放火材料', mode: 'defend', waves: 3, hp: 2, len: 22, challenge: 'onlyFire', types: { shield: 0.15, powder: 0.1 } },
+  { id: '1-c1', story: '挑战「只准用火」：机关台只能放火材料', mode: 'defend', waves: 3, hp: 3.0, len: 22, challenge: 'onlyFire', types: { shield: 0.15, powder: 0.1 } },
   { id: '1-c2', story: '挑战「急行军」：车快一倍，砖也多一倍', mode: 'attack', car: 'small', waves: 3, num: 7, challenge: 'rush', types: { powder: 0.1, iron: 0.12 } },
 ];
-const WAVE_SEC = [20, 25, 30, 35, 40];
+const WAVE_SEC = [32, 38, 44, 50, 56];
 
 // —— 局外 ——
 const META = {
   slots: { name: '守城点位', base: 3, max: 8, cost: [150, 400, 800, 1400, 2200] },
   bench: { name: '机关台格数', base: 2, max: 3, cost: [800] }, // 第一版只到 3 格（还没有三合机关）
-  wallHp: { name: '城墙血', base: 100, step: 10, max: 10, cost: (lv) => 60 + lv * 60 },
+  wallHp: { name: '城墙血', base: 150, step: 15, max: 10, cost: (lv) => 60 + lv * 60 },
   cartSlots: { name: '小工程车格子', base: 2, max: 5, cost: [300, 1200, 4000] },
   dragonLen: { name: '机关龙节数', base: 4, max: 12, cost: (lv) => 400 + lv * 400 },
 };

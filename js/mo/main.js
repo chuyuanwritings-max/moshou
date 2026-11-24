@@ -135,6 +135,8 @@ function startLevel(i) {
   G.benchSel = [];
   G.sel = -1;
   G.teach = lv.teach && !meta.seenTeach[lv.id] ? { text: lv.teach, t: 0 } : null;
+  G.tut = lv.id === '1-1' && !meta.tutDone ? { step: 0, t: 0 } : null;
+  if (G.tut) G.teach = null;
   meta.seenTeach[lv.id] = 1;
   saveMeta();
   handleEvents();
@@ -212,6 +214,7 @@ function press(id) {
     const el = id.slice(4);
     const used = G.benchSel.filter((e) => e === el).length;
     if (G.benchSel.length < r.bench2 && r.mats[el] > used) G.benchSel.push(el);
+    tutAdvance('mat');
   } else if (id.startsWith('bs')) {
     G.benchSel.splice(+id.slice(2), 1);
   } else if (id === 'combine') {
@@ -219,6 +222,7 @@ function press(id) {
     if (mc) {
       G.benchSel = [];
       G.sel = r.bench.length - 1;
+      tutAdvance('combine');
       azSwing(() => {
         snd('clang', 0, 0.6);
         snd('upgrade', 0, 0.5);
@@ -234,6 +238,17 @@ function press(id) {
   } else if (id.startsWith('tray')) {
     const i = +id.slice(4);
     G.sel = G.sel === i ? -1 : i;
+  } else if (id === 'buySpot') {
+    if (F.buySpot(r)) {
+      snd('upgrade', 0, 0.6);
+      const p = F.slotPos(r.slots.length - 1);
+      sparks(p.x, p.y, 14, '#ffd65a');
+      pop('修好新点位！', p.x, p.y - 30, '#ffd65a', 15);
+      tutAdvance('buySpot');
+    } else {
+      snd('alarm', 200, 0.3);
+      pop('铜钱不够', FW / 2, 600, '#ff8a5a', 14);
+    }
   } else if (id.startsWith('spot')) {
     const si = +id.slice(4);
     if (G.sel >= 0) {
@@ -243,6 +258,7 @@ function press(id) {
         snd(res.res === 'merge' ? 'evolve' : 'clang', 0, 0.5);
         const p = F.slotPos(si);
         pop(res.res === 'merge' ? '叠成 ' + res.slot.tier + ' 阶！' : '放下 ' + D.M[res.slot.id].name, p.x, p.y - 26, '#ffd65a', 15);
+        tutAdvance('place');
         G.spotView = { i: si, t: 1.6 };
       }
       G.sel = -1;
@@ -308,6 +324,63 @@ function buyMeta(k) {
   meta[META_KEYS[k]]++;
   saveMeta();
   snd('upgrade', 0, 0.6);
+}
+
+// —— 第一关教学：点两次金 → 点合 → 点亮着的点位 → 龙出发 ——
+const TUT = [
+  { text: '龙要来了！先打一件机关：点两次「金」', target: 'mat_jin' },
+  { text: '金 + 金 = 连弩。点「合」，阿铸打一件', target: 'combine' },
+  { text: '点路边亮着的点位，把连弩放下（圈里的才打得到）', target: 'spot' },
+  { text: '放好了！龙来了。打碎龙节会掉材料，飞到下面', target: null },
+];
+function tutAdvance(what) {
+  const T = G.tut;
+  if (!T) return;
+  if (T.step === 0 && what === 'mat' && G.benchSel.length >= 2) T.step = 1;
+  else if (T.step === 1 && what === 'combine') T.step = 2;
+  else if (T.step === 2 && what === 'place') {
+    T.step = 3;
+    T.t = 0;
+    meta.tutDone = true;
+    saveMeta();
+  }
+}
+function drawTut() {
+  const T = G.tut;
+  const step = TUT[T.step];
+  // 指着要点的东西
+  const b = step.target === 'spot' ? G.btns.find((x) => x.id.startsWith('spot') && !G.r.slots[+x.id.slice(4)]) : step.target ? G.btns.find((x) => x.id === step.target) : null;
+  if (b) {
+    const k = 0.5 + 0.5 * Math.sin(G.t * 8);
+    ctx.strokeStyle = 'rgba(255,214,90,' + (0.6 + 0.4 * k) + ')';
+    ctx.lineWidth = 4;
+    roundRect(ctx, b.x - 4 - k * 3, b.y - 4 - k * 3, b.w + 8 + k * 6, b.h + 8 + k * 6, 12);
+    ctx.stroke();
+    // 小手
+    const hx = b.x + b.w / 2 + 14;
+    const hy = b.y + b.h / 2 + 10 + k * 6;
+    ctx.fillStyle = '#fff8e6';
+    ctx.strokeStyle = LINE;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(hx, hy);
+    ctx.lineTo(hx + 10, hy + 22);
+    ctx.lineTo(hx + 3, hy + 20);
+    ctx.lineTo(hx - 2, hy + 28);
+    ctx.lineTo(hx - 6, hy + 18);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  }
+  const y = T.step === 2 ? 70 : 560;
+  ctx.fillStyle = 'rgba(26,18,12,0.92)';
+  ctx.strokeStyle = '#ffd65a';
+  ctx.lineWidth = 2;
+  roundRect(ctx, 14, y, FW - 28, 54, 12);
+  ctx.fill();
+  ctx.stroke();
+  bigText(ctx, '第 ' + (Math.min(T.step, 2) + 1) + ' 步 / 3', 28, y + 16, 11, '#ffd65a', LINE, 'left');
+  wrap(step.text, 28, y + 36, FW - 56, 13);
 }
 
 // 机关台上做好的机关，自动摆上城墙 / 车：有一样的就叠上去升阶，没有就放空位
@@ -521,7 +594,12 @@ function frame() {
     G.hitstop -= dt;
     dt *= 0.2;
   }
-  if (G.scr === 'play' && G.st) {
+  if (G.tut) {
+    G.tut.t += dt;
+    if (G.tut.step >= 3 && G.tut.t > 3.5) G.tut = null;
+  }
+  const tutHold = G.tut && G.tut.step < 3 && !G.bot;
+  if (G.scr === 'play' && G.st && !tutHold) {
     acc += dt * G.speed;
     let n = 0;
     while (acc >= 1 / 60 && n++ < 40 && G.scr === 'play') {
@@ -619,6 +697,7 @@ function render() {
     ctx.restore();
     drawHud();
     if (G.scr === 'play' && G.r.lv.mode === 'defend') drawLiveBench();
+    if (G.tut && G.scr === 'play') drawTut();
     if (G.scr === 'shop') drawShop();
     if (G.scr === 'result') drawResult();
   }
@@ -833,7 +912,15 @@ function drawDefend() {
     ctx.fill();
     ctx.stroke();
     if (!open) {
-      bigText(ctx, '锁', p.x, p.y + 2, 11, '#a89880', LINE);
+      const cost = i === r.slots.length ? F.spotCost(r) : null;
+      if (cost !== null) {
+        const can = r.coins >= cost;
+        G.btns.push({ id: 'buySpot', x: p.x - 26, y: p.y - 22, w: 52, h: 40 });
+        ctx.fillStyle = can ? 'rgba(200,150,40,0.9)' : 'rgba(60,48,36,0.85)';
+        roundRect(ctx, p.x - 26, p.y - 4, 52, 18, 9);
+        ctx.fill();
+        bigText(ctx, '修 ' + cost, p.x, p.y + 5, 11, can ? '#fff8e6' : '#a89880', LINE);
+      } else bigText(ctx, '锁', p.x, p.y + 2, 11, '#a89880', LINE);
       return;
     }
     G.btns.push({ id: 'spot' + i, x: p.x - 24, y: p.y - 30, w: 48, h: 48 });
@@ -1063,7 +1150,7 @@ function drawHud() {
     bigText(ctx, D.EL[e].name, x, 18, 10, LINE, '#fff8e6');
     bigText(ctx, String(r.mats[e]), x, 38, 12, '#fff8e6', LINE);
   });
-  if (G.banner > 0 && G.scr === 'play') {
+  if (G.banner > 0 && G.scr === 'play' && !(G.tut && G.tut.step < 3)) {
     ctx.save();
     ctx.globalAlpha = clamp(G.banner / 0.3, 0, 1);
     ctx.fillStyle = 'rgba(20,14,10,0.8)';

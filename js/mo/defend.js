@@ -13,16 +13,19 @@ const WALL_Y = 590;
 // 点位：城外高低不同的箭楼、土台，散在路边（路：顶上往下 → y96 往右 → x314 往下 → y310 往左 → x46 往下 → y524 往右 → 城门）
 // 按解锁顺序排：先开离城门近的
 const SPOTS = [
-  // 照《王国保卫战》摆：弯道内侧一个点盖两段路；三个点交叉盖住同一段是杀伤区；入口最没用，最后开
-  { x: 264, y: 260, name: '东弯箭楼', why: '右边竖路转中间横路的弯道内侧，盖两段' },
-  { x: 96, y: 360, name: '西弯箭楼', why: '中间横路转左边竖路的弯道内侧，和东弯夹住中间横路' },
-  { x: 180, y: 360, name: '中路土台', why: '中间横路正下方，和两个弯道点交叉：第一个杀伤区' },
-  { x: 96, y: 474, name: '南弯箭楼', why: '左边竖路转下面横路的弯道内侧，接住漏下来的' },
-  { x: 228, y: 548, name: '城门东台', why: '贴着进城的最后一段：最后一道防线' },
-  { x: 264, y: 146, name: '东北弯台', why: '上面横路转右边竖路的弯道内侧，适合放减速，拖慢进杀伤区' },
-  { x: 110, y: 146, name: '入口箭楼', why: '入口最没用，倒数第二个开，补漏、提前削血' },
-  { x: 180, y: 474, name: '城门北台', why: '最后一个弯的外侧，和南弯、城门东台组成第二个杀伤区' },
+  // 路：顶上往下 → y96 往右 → x314 往下 → y239 往左 → x46 往下 → y381 往右 → x314 往下 → y524 往左 → 城门
+  // 照《王国保卫战》摆：弯道内侧一个点盖两段；两条横路中间的点离两条路一样远，三个点交叉成杀伤区；入口最后开
+  { x: 264, y: 452, name: '东南弯台', why: '第三、四条横路之间的右弯内侧，盖三段' },
+  { x: 96, y: 310, name: '西弯箭楼', why: '第二、三条横路之间的左弯内侧，盖三段' },
+  { x: 180, y: 452, name: '南中土台', why: '第三、四条横路正中间，和东南弯台交叉：城门前的杀伤区' },
+  { x: 264, y: 167, name: '东北弯台', why: '第一、二条横路之间的右弯内侧，放减速拖慢' },
+  { x: 228, y: 572, name: '城门东台', why: '贴着进城的最后一段，最后一道防线' },
+  { x: 180, y: 310, name: '中路土台', why: '第二、三条横路正中间，和西弯交叉：中间的杀伤区' },
+  { x: 96, y: 167, name: '入口箭楼', why: '靠入口，盖得少，后开' },
+  { x: 130, y: 572, name: '城门西台', why: '进城最后一段的另一边，和城门东台夹住' },
 ];
+// 关内花铜钱开下一个点位（一关里越开越贵）
+const SPOT_COST = [40, 60, 90, 130, 180];
 const BOLT_CD = 0.36;
 
 function slotPos(i) {
@@ -33,7 +36,7 @@ function rangeOf(r, m) {
 }
 
 function newDefend(r) {
-  const path = P.build(3, true, 'snake');
+  const path = P.build(4, true, 'snake');
   const st = {
     r, path, t: 0, mode: 'play', events: [],
     px: D.FIELD.w / 2, targetX: D.FIELD.w / 2, boltCd: 0,
@@ -70,7 +73,7 @@ function startWave(st) {
 function spawnDragon(st, boss) {
   const r = st.r;
   const lv = r.lv;
-  const len = boss ? lv.len + 8 : lv.len + r.wave * 3 + st.spawned * 2;
+  const len = boss ? lv.len + 8 : Math.max(8, lv.len - 4 + r.wave * 3 + st.spawned * 2);
   const base = (4 + r.wave * 3 + st.spawned * 1.5) * lv.hp;
   const segs = [];
   for (let i = 0; i < len; i++) {
@@ -80,7 +83,7 @@ function spawnDragon(st, boss) {
     if (boss && i === 0) hp *= 10;
     segs.push({ hp, hp0: hp, type, s: -i * GAP - 10, alive: true, burnT: 0, frozen: 0, chest: false, id: i });
   }
-  st.dragons.push({ segs, len0: len, v: (52 + r.wave * 5 + lv.hp * 5) * (boss ? 0.7 : 1), boss, dashCd: 6 + r.R() * 3, glow: 0, dash: 0, slowT: 0, slowK: 0, freezeT: 0, blockT: 0 });
+  st.dragons.push({ segs, len0: len, v: (36 + r.wave * 5 + lv.hp * 4) * (boss ? 0.7 : 1), boss, dashCd: 6 + r.R() * 3, glow: 0, dash: 0, slowT: 0, slowK: 0, freezeT: 0, blockT: 0 });
   st.spawned++;
 }
 
@@ -186,7 +189,7 @@ function moveDragons(st, dt) {
     // 撞城门：头一节冲进门，城墙掉血，这一节没了
     if (head.s >= st.path.len) {
       head.alive = false;
-      const dmg = d.boss && head.id === 0 ? 30 : 3 + head.hp / 25;
+      const dmg = d.boss && head.id === 0 ? 25 : 2 + head.hp / 30;
       const real = B.hurtSelf(r, dmg);
       ev(st, { t: 'breach', dmg: Math.round(real), boss: d.boss && head.id === 0 });
       if (r.hp <= 0) {
@@ -258,6 +261,8 @@ function stepMachines(st, dt) {
     if (!mc) return;
     const m = D.M[mc.id];
     const pos = slotPos(i);
+    if (st.cd[i] === undefined) st.cd[i] = 0.5;
+    if (st.heat[i] === undefined) st.heat[i] = 0;
     st.cd[i] -= dt;
     if (st.cd[i] > 0) return;
     const cd = m.cd * D.TIER_CD[mc.tier - 1] * B.cdMul(r);
@@ -513,4 +518,18 @@ function botX(st) {
   return best ? segXY(st, best).x : D.FIELD.w / 2;
 }
 
-module.exports = { newDefend, step, nextWave, slotPos, rangeOf, segXY, alive, botX, SPOTS, WALL_Y, PLAYER_Y, SEG_R, GAP };
+// 花铜钱开下一个点位
+function spotCost(r) {
+  const n = r.spotsBought || 0;
+  return r.slots.length >= SPOTS.length ? null : SPOT_COST[Math.min(n, SPOT_COST.length - 1)];
+}
+function buySpot(r) {
+  const c = spotCost(r);
+  if (c === null || r.coins < c) return false;
+  r.coins -= c;
+  r.spotsBought = (r.spotsBought || 0) + 1;
+  r.slots.push(null);
+  return true;
+}
+
+module.exports = { spotCost, buySpot, newDefend, step, nextWave, slotPos, rangeOf, segXY, alive, botX, SPOTS, WALL_Y, PLAYER_Y, SEG_R, GAP };
