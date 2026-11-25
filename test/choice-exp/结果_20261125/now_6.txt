@@ -1,0 +1,4 @@
+1-7 now hp×1.5 spots: design 82%(剩血82%,漏0节)  |  random 64%(剩血80%,漏0节)  |  reverse 35%(剩血69%,漏0节)
+1-7 now hp×1.5 assign: first 82%(剩血82%,漏0节)  |  random 83%(剩血81%,漏0节)
+1-7 now hp×1.5 combine: first 82%(剩血82%,漏0节)  |  random 83%(剩血83%,漏0节)  |  last 83%(剩血79%,漏0节)
+1-7 now hp×1.5 card: first 82%(剩血82%,漏0节)  |  random 81%(剩血76%,漏0节)

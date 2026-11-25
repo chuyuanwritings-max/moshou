@@ -1,0 +1,4 @@
+1-7 range hp×0.8 spots: design 79%(剩血80%,漏0节)  |  random 47%(剩血80%,漏0节)  |  reverse 38%(剩血72%,漏0节)
+1-7 range hp×0.8 assign: first 79%(剩血80%,漏0节)  |  random 76%(剩血83%,漏0节)
+1-7 range hp×0.8 combine: first 79%(剩血80%,漏0节)  |  random 80%(剩血77%,漏0节)  |  last 75%(剩血78%,漏0节)
+1-7 range hp×0.8 card: first 79%(剩血80%,漏0节)  |  random 78%(剩血80%,漏0节)

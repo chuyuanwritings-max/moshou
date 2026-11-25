@@ -1,0 +1,4 @@
+1-5 fix hp×0.8 spots: design 100%(剩血93%,漏0节)  |  random 74%(剩血90%,漏0节)  |  reverse 88%(剩血86%,漏0节)
+1-5 fix hp×0.8 assign: first 100%(剩血93%,漏0节)  |  random 100%(剩血94%,漏0节)
+1-5 fix hp×0.8 combine: first 100%(剩血93%,漏0节)  |  random 99%(剩血93%,漏0节)  |  last 98%(剩血93%,漏0节)
+1-5 fix hp×0.8 card: first 100%(剩血93%,漏0节)  |  random 98%(剩血92%,漏0节)

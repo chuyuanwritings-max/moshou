@@ -1,0 +1,32 @@
+--- /Users/chuyuannc/Downloads/Cursor/Kira/06_游戏设计/打龙塔防/原型/js/mo/defend.js	2026-11-24 21:10:46
++++ js/mo/defend.js	2026-11-25 20:46:06
+@@ -36,7 +36,7 @@
+ function rangeOf(r, m, si) {
+   if (!m.rng) return 0;
+   const k = si !== undefined && SPOTS[si] && SPOTS[si].buff === 'high' ? 1.3 : 1;
+-  return (m.rng + B.stats(r).range) * k;
++  return (m.rng + B.stats(r).range) * k * (global.RANGE_K || 1);
+ }
+ 
+ function newDefend(r) {
+@@ -595,7 +595,7 @@
+     }
+   }
+   st.waveT -= dt;
+-  const timeUp = st.waveT <= 0 && !st.bossAlive;
++  const timeUp = st.waveT <= 0 && !st.bossAlive && (!global.CLEAR || !st.dragons.some((d) => d.segs.some((g) => g.alive)));
+   if (timeUp) endWave(st);
+ }
+ 
+@@ -603,6 +603,11 @@
+ function endWave(st) {
+   const pts = [];
+   forEachSeg(st, (g) => pts.push(segXY(st, g)));
++  if (global.LEAK && pts.length) {
++    st.r.hp -= pts.length * global.LEAK; // 实验：没打碎的节冲门扣血
++    st.leaked = (st.leaked || 0) + pts.length;
++    if (st.r.hp <= 0) { st.mode = 'lose'; ev(st, { t: 'lose' }); return; }
++  }
+   st.dragons = [];
+   st.bolts = [];
+   st.shots = [];
