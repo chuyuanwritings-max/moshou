@@ -23,6 +23,7 @@ function loop() {
   PF.nextFrame(loop);
   try {
     if (active && modes[active]) modes[active].frame();
+    PF.flushVibrate(); // 这一帧攒下的震动，只震最重的一下
   } catch (e) {
     errN++;
     if (errN <= 5) console.error('[frame error]', e);

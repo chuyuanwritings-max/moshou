@@ -266,7 +266,7 @@ function handleEvents(st) {
           G.flash = 0.25;
           G.flashColor = '#fff3d0';
           snd('ram');
-          PF.vibrate(true);
+          PF.vibrate('heavy');
           for (let k = 1; k < 5; k++) coinFly(e.x + (Math.random() - 0.5) * 30, e.y, k * 0.05);
         }
         break;
@@ -277,7 +277,7 @@ function handleEvents(st) {
         G.fx.push({ k: 'rays', x: e.x, y: e.y, life: 0.5, max: 0.5 });
         shards(e.x, e.y, 10, D.P.gold);
         snd('chest');
-        PF.vibrate(false);
+        PF.vibrate('medium');
         break;
       case 'blast':
         boom(e.x, e.y, e.r, false);
@@ -301,7 +301,7 @@ function handleEvents(st) {
         text(e.x, e.y - 30, '退！', 20, D.P.gold, 0.7);
         G.shake = Math.max(G.shake, 6);
         G.hitstop = Math.max(G.hitstop, 0.06);
-        PF.vibrate(false);
+        PF.vibrate('medium');
         break;
       case 'mortar':
         snd('mortar');
@@ -312,7 +312,7 @@ function handleEvents(st) {
         G.shake = Math.max(G.shake, 8);
         G.hitstop = Math.max(G.hitstop, 0.06);
         snd('boom');
-        PF.vibrate(false);
+        PF.vibrate('medium');
         // 留一团蒸汽：龙爬慢
         for (let k = 0; k < 7; k++) {
           const a = (k / 7) * Math.PI * 2;
@@ -355,7 +355,7 @@ function handleEvents(st) {
           if (G.bot) G.cs.skip();
           for (let k = 0; k < 4; k++) ring(st.px, F.playerY - 14, 50 + k * 30, w.color, 0.5 + k * 0.1, 6);
           sparks(st.px, F.playerY - 14, 24, w.color, 1.4);
-          PF.vibrate(true);
+          PF.vibrate('heavy');
         } else {
           snd('pick');
           text(st.px, F.playerY - 60, w.name + (e.lv > 1 ? ' Lv' + e.lv : ' 到手'), 20, w.color, 0.9);
@@ -424,11 +424,11 @@ function handleEvents(st) {
         pop(e.x, e.y, 26, '#fff7e0', 0.1);
         if (roomFor(12)) chunks(e.x, e.y, 3, [D.P.brass, '#7F602C', '#6b5a48']);
         snd('thud', 60, 0.8);
-        PF.vibrate(false);
+        PF.vibrate('medium');
         break;
       case 'lever':
         snd('alarm');
-        PF.vibrate(true);
+        PF.vibrate('heavy');
         break;
       case 'leverPull':
         snd('salvo');
@@ -437,7 +437,7 @@ function handleEvents(st) {
         G.shake = 9;
         for (let k = 0; k < 6; k++) G.fx.push({ k: 'ball', x: 30 + k * 60, y: F.gateY - 20, tx: st.segs[k] ? st.segs[k].x : 180, ty: st.segs[k] ? st.segs[k].y : 300, life: 0.4, max: 0.4 });
         if (st.segs[0]) text(st.segs[0].x, st.segs[0].y - 20, '退 10 节', 18, D.P.gold, 1);
-        PF.vibrate(true);
+        PF.vibrate('heavy');
         break;
       case 'win': {
         G.hitstop = 0.15;
@@ -445,7 +445,7 @@ function handleEvents(st) {
         G.flash = 0.25;
         G.flashColor = '#fff3d0';
         snd('win');
-        PF.vibrate(true);
+        PF.vibrate('heavy');
         for (let k = 0; k < 5; k++) puff(F.w / 2 + (Math.random() - 0.5) * 200, 300 + (Math.random() - 0.5) * 300, 4, 10);
         G.mode = 'end';
         G.endTimer = 1.3;
@@ -456,7 +456,7 @@ function handleEvents(st) {
         G.flash = 0.3;
         G.flashColor = '#ff3b2f';
         snd('lose');
-        PF.vibrate(true);
+        PF.vibrate('heavy');
         G.timing.loseAt = PF.now();
         G.mode = 'end';
         G.endTimer = 0.6;
@@ -1182,7 +1182,7 @@ function press(id) {
     G.flashColor = '#fff3d0';
     G.shake = 6;
     for (let k = 0; k < 18; k++) G.fx2.push(mkSpark(F.w / 2, 300));
-    PF.vibrate(true);
+    PF.vibrate('heavy');
   } else if (id.indexOf('buddy_') === 0) {
     const bid = id.slice(6);
     meta.buddy = meta.buddy === bid ? null : bid;

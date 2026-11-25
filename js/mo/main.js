@@ -17,6 +17,7 @@ const meta = Object.assign(
   PF.load(SAVE) || {}
 );
 const saveMeta = () => PF.save(SAVE, meta);
+PF.setVibrate(meta.vibe !== false); // 震动开关，默认开
 // 这一趟战役：开局选定的机关师 + 打到哪了。换机关师 = 从 1-1 重新开始（墨晶、配方、神机保留）
 if (!meta.camp) meta.camp = meta.cleared && Object.keys(meta.cleared).length ? { builder: meta.builder, cleared: Object.assign({}, meta.cleared) } : null;
 if (!meta.ever) meta.ever = Object.assign({}, meta.cleared || {});
@@ -253,6 +254,7 @@ function onTouch(type, id, px, py) {
           if (!G.r || !G.r.bench[bi]) return; // 按钮表是上一帧画的，这格可能刚空
           G.dragM = { id, bi, fx, fy, fx0: fx, fy0: fy, moved: false, was: G.sel === bi };
           G.sel = bi;
+          PF.vibrate('light'); // 拿起
           return;
         }
         // 场上的机关：按住也能拖（合、挪、换）
@@ -261,7 +263,7 @@ function onTouch(type, id, px, py) {
           G.dragM = { id, si, kind: bid.slice(0, 4), fx, fy, fx0: fx, fy0: fy, moved: false };
           return;
         }
-        press(bid);
+        act(bid);
         return;
       }
     }
@@ -289,6 +291,7 @@ function onTouch(type, id, px, py) {
           if (same) same.tier += m.tier;
           else G.r.bench.push(m);
           snd('clang', 0, 0.5);
+          PF.vibrate('light');
           G.sel = -1;
         } else if (tgt) {
           const to = +tgt.slice(4);
@@ -302,16 +305,16 @@ function onTouch(type, id, px, py) {
           }
           if (res) {
             snd(res.res === 'merge' ? 'evolve' : 'clang', 0, 0.5);
+            PF.vibrate(res.res === 'merge' ? 'medium' : 'light');
             if (res.res === 'merge') {
               chargeUp();
-              PF.vibrate(true);
               const p = G.r.lv.mode === 'defend' && G.scr === 'play' ? F.slotPos(to) : { x: FW / 2, y: G.scr === 'play' ? 540 : 120 };
               pop('叠成 ' + res.slot.tier + ' 阶！', p.x, p.y - 26, '#ffd65a', 16);
               sparks(p.x, p.y - 10, 12, '#ffd65a');
             }
             if (G.scr === 'play') G.spotView = { i: to, t: 1.6 };
           }
-        } else if (!d.moved) press(d.kind + d.si);
+        } else if (!d.moved) act(d.kind + d.si);
       } else if (!d.moved) {
         if (d.was) G.sel = -1;
       } else {
@@ -326,13 +329,13 @@ function onTouch(type, id, px, py) {
             G.r.bench.splice(d.bi, 1);
             chargeUp();
             snd('evolve', 0, 0.5);
-            PF.vibrate(true);
+            PF.vibrate('medium');
             pop('叠成 ' + b.tier + ' 阶！', FW / 2, G.scr === 'play' ? 600 : 560, '#ffd65a', 16);
           }
           G.sel = -1;
         } else if (tgt) {
           G.sel = d.bi;
-          press(tgt);
+          act(tgt);
         } else G.sel = -1;
       }
     }
@@ -386,20 +389,25 @@ function drawDragM() {
   machineIcon(m.id, m.tier, d.fx, d.fy - 24, 18, true);
 }
 
+// 手指点到按钮：成了轻震一下（照震动规矩：没成的点击不震，press 返回 false 就是没成）
+function act(id) {
+  if (press(id) !== false) PF.vibrate('light');
+}
+
 function press(id) {
   fixSel();
   const r = G.r;
   snd('tap', 40, 0.4);
-  if (G.recipesOpen && id !== 'recipesClose' && !id.startsWith('make_')) return;
+  if (G.recipesOpen && id !== 'recipesClose' && !id.startsWith('make_')) return false;
   if (G.tip) {
-    if (id !== 'tipNext') return;
+    if (id !== 'tipNext') return false;
     G.tip.i++;
     if (G.tip.i >= TIPS[G.tip.key].length) G.tip = null;
     return;
   }
   if (id.startsWith('node')) {
     const i = +id.slice(4);
-    if (!unlocked(i)) return;
+    if (!unlocked(i)) return false;
     G.lvIdx = i;
     G.bldView = null;
     G.scr = 'brief';
@@ -409,7 +417,7 @@ function press(id) {
   else if (id === 'pickBack') G.scr = 'map';
   else if (id === 'pickGo') {
     const b = D.BUILDERS.find((x) => x.id === (G.bldView || 'azhu'));
-    if (!bUnlocked(b)) return;
+    if (!bUnlocked(b)) return false;
     meta.camp = { builder: b.id, cleared: {} };
     meta.builder = b.id;
     saveMeta();
@@ -421,10 +429,14 @@ function press(id) {
     G.confirm = false;
     G.bldView = null;
     G.scr = 'pick';
+  } else if (id === 'vibe') {
+    meta.vibe = meta.vibe === false;
+    PF.setVibrate(meta.vibe);
+    saveMeta();
   } else if (id === 'meta') G.scr = 'meta';
   else if (id === 'old') SH.go('menu');
   else if (id.startsWith('card')) {
-    if (G.cardsAt && PF.now() - G.cardsAt < 400) return;
+    if (G.cardsAt && PF.now() - G.cardsAt < 400) return false;
     B.pickCard(r, +id.slice(4));
     snd('pick', 0, 0.5);
   } else if (id.startsWith('mat_')) {
@@ -451,8 +463,8 @@ function press(id) {
       tutAdvance('combine');
       chargeUp();
       G.bagua = { t: 0, a0: G.baguaAng || 0, gold: lucky };
-      PF.vibrate(true);
-      if (lucky && typeof setTimeout === 'function') setTimeout(() => PF.vibrate(true), 120);
+      PF.vibrate(lucky ? 'heavy' : 'medium'); // 合成 = 中；大成功 = 重，隔 0.12 秒再重一下
+      if (lucky && typeof setTimeout === 'function') setTimeout(() => PF.vibrate('heavy'), 120);
       azSwing(() => {
         snd('clang', 0, 0.6);
         snd('upgrade', 0, 0.5);
@@ -466,22 +478,25 @@ function press(id) {
         if (r.lv.mode === 'defend') pop(D.M[mc.id].name + '：拖到亮着的点位', FW / 2, 560, '#ffd65a', 15);
         else pop(D.M[mc.id].name + '：拖到车上的格子', FW / 2, G.scr === 'play' ? 540 : 520, '#ffd65a', 15);
       }
-    }
+    } else return false;
   } else if (id.startsWith('tray')) {
     const i = +id.slice(4);
-    if (!r || !r.bench[i]) return;
+    if (!r || !r.bench[i]) return false;
     G.sel = G.sel === i ? -1 : i;
   } else if (id === 'smash') {
-    if (G.scr !== 'play') return;
+    if (G.scr !== 'play') return false;
     if ((r.charge || 0) < CHARGE_MAX) {
       pop('还差 ' + (CHARGE_MAX - (r.charge || 0)) + ' 格：合成、叠阶都攒', smashPos().x - 60, smashPos().y - 34, '#cbb8a8', 12);
-      return;
+      return false;
     }
     if (S().smash(G.st)) {
       r.charge = 0;
       azSwing(() => {});
       handleEvents();
-    } else pop(r.lv.mode === 'defend' ? '路上还没有龙' : '前面没有砖', smashPos().x - 40, smashPos().y - 34, '#cbb8a8', 13);
+    } else {
+      pop(r.lv.mode === 'defend' ? '路上还没有龙' : '前面没有砖', smashPos().x - 40, smashPos().y - 34, '#cbb8a8', 13);
+      return false;
+    }
   } else if (id === 'buySpot') {
     if (F.buySpot(r)) {
       snd('upgrade', 0, 0.6);
@@ -492,14 +507,17 @@ function press(id) {
     } else {
       snd('alarm', 200, 0.3);
       pop('铜钱不够', FW / 2, 600, '#ff8a5a', 14);
+      return false;
     }
   } else if (id.startsWith('spot')) {
     const si = +id.slice(4);
     if (G.sel >= 0) {
       const res = B.place(r, G.sel, si);
+      const ok = res && !res.blocked && !res.full;
       if (res && res.blocked) pop('一夫当关：只能放 1 件', FW / 2, 560, '#ff8a5a', 15);
       else if (res && res.full) pop('已经满阶（最高 4 阶）', FW / 2, 300, '#ff9a6a', 15);
       else if (res) {
+        if (res.res === 'merge') PF.vibrate('medium');
         if (res.res === 'swap' && G.scr === 'play') {
           // 换下来的那件回到手上：再放出去也要装 3 秒（不然等于免费挪）
           const back = r.bench[r.bench.length - 1];
@@ -513,31 +531,43 @@ function press(id) {
         G.spotView = { i: si, t: 1.6 };
       }
       G.sel = -1;
+      if (!ok) return false;
     } else if (r.slots[si]) G.spotView = { i: si, t: 1.6 };
+    else return false;
   } else if (id.startsWith('slot')) {
     const si = +id.slice(4);
     if (G.sel >= 0) {
       const res = B.place(r, G.sel, si);
+      const ok = res && !res.blocked && !res.full;
       if (res && res.blocked) pop('一夫当关：只能放 1 件', FW / 2, 120, '#ff8a5a', 16);
       else if (res && res.full) pop('已经满阶（最高 4 阶）', FW / 2, 300, '#ff9a6a', 15);
       else if (res) {
+        if (res.res === 'merge') PF.vibrate('medium');
         snd(res.res === 'merge' ? 'evolve' : 'clang', 0, 0.5);
         if (res.res === 'merge') chargeUp();
         if (res.res === 'merge') pop('合成 ' + D.M[res.slot.id].name + ' ' + res.slot.tier + ' 阶！', FW / 2, 120, '#ffd65a', 18);
       }
       G.sel = -1;
-    }
+      if (!ok) return false;
+    } else return false;
   } else if (id === 'sell') {
-    if (G.sel >= 0) B.sell(r, G.sel);
+    if (G.sel < 0) return false;
+    B.sell(r, G.sel);
     G.sel = -1;
   } else if (id.startsWith('buy')) {
     if (B.buy(r, +id.slice(3))) snd('coin', 0, 0.6);
-    else snd('alarm', 200, 0.3);
+    else {
+      snd('alarm', 200, 0.3);
+      return false;
+    }
   } else if (id.startsWith('lock')) {
     const i = +id.slice(4);
     r.locked[i] = !r.locked[i];
   } else if (id === 'refresh') {
-    if (!B.refresh(r)) snd('alarm', 200, 0.3);
+    if (!B.refresh(r)) {
+      snd('alarm', 200, 0.3);
+      return false;
+    }
   } else if (id === 'nextWave') {
     r.slots.concat(r.bench).forEach((m) => m && (m.installT = 0)); // 波间挪的不用等
     G.scr = 'play';
@@ -548,7 +578,7 @@ function press(id) {
     handleEvents();
   } else if (id === 'again') startLevel(G.lvIdx);
   else if (id === 'toMap') G.scr = 'map';
-  else if (id.startsWith('up_')) buyMeta(id.slice(3));
+  else if (id.startsWith('up_')) return buyMeta(id.slice(3));
   else if (id.startsWith('rec_')) {
     const mid = id.slice(4);
     if (meta.pages >= 3 && meta.recipes.indexOf(mid) < 0) {
@@ -556,7 +586,7 @@ function press(id) {
       meta.recipes.push(mid);
       saveMeta();
       snd('evolve', 0, 0.5);
-    }
+    } else return false;
   }
 }
 
@@ -572,7 +602,7 @@ function buyMeta(k) {
   const c = metaCost(k);
   if (c === null || meta.mojing < c) {
     snd('alarm', 200, 0.3);
-    return;
+    return false;
   }
   meta.mojing -= c;
   meta[META_KEYS[k]]++;
@@ -790,12 +820,16 @@ function handleEvents() {
         if (cb.n > cb.best) cb.best = cb.n;
         const rate = cb.n >= 3 ? 0.9 + Math.min(cb.n, 14) * 0.055 : 0.9 + Math.random() * 0.25;
         snd(e.boss || e.kind === 'gate' ? 'boom' : 'break', 35, 0.5, rate);
+        // 连碎只在开头震一下（中）；撞开城门 / 打碎铁头龙是重
+        if (e.boss || e.kind === 'gate') PF.vibrate('heavy');
+        else if (cb.n === 1) PF.vibrate('medium');
         const bonus = { 10: 5, 20: 10, 30: 20 }[cb.n] || (cb.n > 30 && cb.n % 10 === 0 ? 20 : 0);
         if (bonus) {
           G.r.coins += bonus;
           pop('连碎 ×' + cb.n + '！ +' + bonus + ' 铜钱', FW / 2, 140, '#ffd65a', 18);
           G.shake = Math.max(G.shake, 6 + Math.min(cb.n, 40) / 5);
           snd('upgrade', 0, 0.5);
+          PF.vibrate('medium');
         }
         if (e.kind === 'tower') pop('拆了弩塔！', x, y - 30, '#ffb74a', 15);
         break;
@@ -815,6 +849,7 @@ function handleEvents() {
         pop('金库！+15', x, y - 30, '#ffd65a', 18);
         sparks(x, y, 16, '#ffd65a');
         snd('coin', 0, 0.7);
+        PF.vibrate('medium');
         break;
       case 'log':
         G.shake = Math.max(G.shake, 10);
@@ -823,7 +858,7 @@ function handleEvents() {
         pop('城门滚木！推回去了', x, y - 30, '#ffd65a', 18);
         snd('thud', 0, 0.8);
         snd('ram', 0, 0.5);
-        PF.vibrate(true);
+        PF.vibrate('heavy');
         break;
       case 'refund':
         orb(x, y, e.el);
@@ -841,7 +876,7 @@ function handleEvents() {
         pop('阿铸一锤！', x, y - 74, '#ffd65a', 24);
         snd('boom', 0, 0.8);
         snd('thud', 0, 0.7);
-        PF.vibrate(true);
+        PF.vibrate('heavy');
         break;
       case 'dragonDown':
         // 整条龙碎光：慢一下 + 大字 + 奖励
@@ -852,13 +887,17 @@ function handleEvents() {
         sparks(x, y, 20, '#ffd65a');
         pop('整条龙碎了！ +' + e.bonus, x, y - 36, '#ffd65a', 20);
         snd('win', 0, 0.4);
+        PF.vibrate('medium');
         break;
       case 'boom':
       case 'kaboom':
         sparks(x, y, 16, '#ff9a3a');
         G.shake = Math.max(G.shake, 7);
         snd('blast', 60, 0.5);
-        if (e.self) pop('炸了！-3', x, y - 30, '#ff6a4a', 18);
+        if (e.self) {
+          pop('炸了！-3', x, y - 30, '#ff6a4a', 18);
+          PF.vibrate('heavy');
+        }
         break;
       case 'glow':
         snd('alarm', 200, 0.3, 1.4);
@@ -874,13 +913,14 @@ function handleEvents() {
         G.shake = Math.max(G.shake, e.boss ? 14 : 6);
         pop('-' + e.dmg, FW / 2, F.WALL_Y - 30, '#ff6a4a', 22);
         snd('ram', 80, 0.6);
-        PF.vibrate(true);
+        PF.vibrate('heavy');
         break;
       case 'boltHit':
         G.flash = 0.18;
         G.flashCol = '#ff4a2a';
         pop('-' + e.dmg, x + 12, y - 10, '#ff6a4a', 18);
         snd('clang', 50, 0.5);
+        PF.vibrate('heavy');
         break;
       case 'deflect':
         sparks(x, y, 6, '#fff');
@@ -920,6 +960,7 @@ function handleEvents() {
         G.flash = 0.3;
         G.flashCol = '#ffffff';
         snd('win', 0, 0.5);
+        PF.vibrate('medium');
         G.waveClearAt = PF.now();
         break;
       case 'win':
@@ -933,6 +974,7 @@ function handleEvents() {
         break;
       case 'bossDown':
         pop('打倒铁头龙！', FW / 2, 280, '#ffd65a', 24);
+        PF.vibrate('heavy');
         break;
     }
   }
@@ -949,6 +991,7 @@ function handleEvents() {
 function finish(win, left) {
   if (G.finished) return;
   G.finished = true;
+  PF.vibrate('heavy'); // 过关、失败都是重
   const lv = G.r.lv;
   const i = G.lvIdx;
   const first = win && !meta.cleared[lv.id];
@@ -1121,6 +1164,7 @@ function stepFx(dt) {
 
 // —— 画 ——
 function render() {
+  fixSel(); // 这一帧里手上的东西可能刚被自动摆走（机器人、自动摆放），画之前再查一遍
   G.btns = [];
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.fillStyle = '#120d0a';
@@ -2325,6 +2369,7 @@ function drawMap() {
   bigText(ctx, '墨守 · 边城', 14, 22, 20, '#ffd65a', LINE, 'left');
   bigText(ctx, '墨晶 ' + meta.mojing + '   残页 ' + meta.pages, 14, 46, 12, '#fff8e6', LINE, 'left');
   btn('meta', FW - 92, 12, 80, 40, '工坊', '#8a5a1e');
+  btn('vibe', FW - 172, 18, 72, 28, meta.vibe === false ? '震动 关' : '震动 开', meta.vibe === false ? '#4a3a2a' : '#3f6a5a', '', { size: 12 });
   // 连线
   ctx.strokeStyle = 'rgba(255,214,90,0.5)';
   ctx.lineWidth = 4;
@@ -2472,4 +2517,4 @@ function drawMeta() {
 }
 
 SH.register('mo', { onTouch, frame, enter: () => (last = PF.now()) });
-PF.exposeForTest('__mo', { G, meta, D, B, F, A, startLevel, press, saveMeta, scale, ox, oy, metaNow });
+PF.exposeForTest('__mo', { G, meta, D, B, F, A, startLevel, press, saveMeta, scale, ox, oy, metaNow, vibeLog: PF.vibeLog });

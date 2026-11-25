@@ -75,12 +75,38 @@ function nextFrame(fn) {
   return requestAnimationFrame(fn);
 }
 
-function vibrate(strong) {
-  if (isWx && wx.vibrateShort) {
-    wx.vibrateShort({ type: strong ? 'heavy' : 'light', fail() {} });
-  } else if (touched && typeof navigator !== 'undefined' && navigator.vibrate) {
-    navigator.vibrate(strong ? 30 : 10);
-  }
+// 震动三档（照 00_震动手感规矩_1.0）：light 每一次有效的点、拿、放；medium 小成功；heavy 大事或犯错。
+// 同一帧里只震最重的那一下；两次至少隔 40 毫秒（没到就留到下一帧，和后面来的合成一下）。
+// 旧写法 vibrate(true / false) 照旧能用：true = heavy，false = light。
+const VIBE_RANK = { light: 1, medium: 2, heavy: 3 };
+const VIBE_GAP = 40;
+let vibeOn = true;
+let vibePending = 0;
+let vibeLast = -1e9;
+const vibeLog = []; // 测试打桩用：每次真震了记一笔 { t, type }
+function vibrate(level) {
+  const type = level === true ? 'heavy' : level === false || level === undefined ? 'light' : level;
+  const k = VIBE_RANK[type] || 1;
+  if (k > vibePending) vibePending = k;
+}
+function flushVibrate() {
+  if (!vibePending) return;
+  const t = Date.now();
+  if (t - vibeLast < VIBE_GAP) return;
+  const type = ['', 'light', 'medium', 'heavy'][vibePending];
+  vibePending = 0;
+  if (!vibeOn) return;
+  vibeLast = t;
+  vibeLog.push({ t, type });
+  if (vibeLog.length > 500) vibeLog.shift();
+  try {
+    if (isWx && wx.vibrateShort) wx.vibrateShort({ type, fail() {} });
+    else if (touched && typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate({ light: 10, medium: 18, heavy: 32 }[type]);
+  } catch (e) {} // 震不了就安静
+}
+function setVibrate(on) {
+  vibeOn = !!on;
+  vibePending = 0;
 }
 
 // 激励视频。填了广告位 id 且在微信里才放真广告，返回 true；
@@ -203,4 +229,4 @@ function exposeForTest(name, value) {
   if (!isWx && typeof window !== 'undefined') window[name] = value;
 }
 
-module.exports = { isWx, setup, createOffscreen, loadImage, now, nextFrame, vibrate, showRewardedAd, load, save, exposeForTest, sound, unlockAudio, setMuted };
+module.exports = { isWx, setup, createOffscreen, loadImage, now, nextFrame, vibrate, flushVibrate, setVibrate, vibeOn: () => vibeOn, vibeLog, showRewardedAd, load, save, exposeForTest, sound, unlockAudio, setMuted };

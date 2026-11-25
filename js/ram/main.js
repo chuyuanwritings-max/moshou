@@ -203,7 +203,7 @@ function handleEvents(st) {
       dropCar(st);
       snd('hit', 35, 0.35, 0.9 + Math.min(e.combo, 30) * 0.035);
       G.shake = Math.max(G.shake, e.kind === 'gate' ? 3 : 1.6);
-      if (e.combo % 4 === 1) PF.vibrate(false);
+      if (e.combo % 4 === 1) PF.vibrate('medium');
     } else if (e.t === 'bump') {
       snd('thud', 80, 0.5);
       G.shake = Math.max(G.shake, 3);
@@ -256,7 +256,7 @@ function handleEvents(st) {
       pop('-1', e.x + 14, y - 10, '#ff6a4a', 20);
       dropCar(st);
       snd('clang', 50, 0.6);
-      PF.vibrate(true);
+      PF.vibrate('heavy');
     } else if (e.t === 'deflect') {
       sparks(e.x, y, 8, '#fff');
       snd('clang', 50, 0.4, 1.6);
@@ -318,7 +318,7 @@ function handleEvents(st) {
       pop('被砍了！-3', e.x + 10, y - 16, '#ff6a4a', 20);
       for (let k = 0; k < 3; k++) dropCar(st);
       snd('hitHeavy', 60, 0.6);
-      PF.vibrate(true);
+      PF.vibrate('heavy');
     } else if (e.t === 'newType' || e.t === 'newBoss') {
       const info = (e.t === 'newBoss' ? C.BOSSES : C.TYPES)[e.key];
       G.teach = { key: e.key, boss: e.t === 'newBoss', name: info.name, tip: info.tip, t: 0 };
