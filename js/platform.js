@@ -75,29 +75,54 @@ function nextFrame(fn) {
   return requestAnimationFrame(fn);
 }
 
-// 震动三档（照 00_震动手感规矩_1.0）：light 每一次有效的点、拿、放；medium 小成功；heavy 大事或犯错。
+// 震动三档（照 00_震动手感规矩_1.0）：light 每一次有效的点、拿、放；成功用三下波浪 vibrateWave；heavy 一下 = 犯错、挨打。
 // 同一帧里只震最重的那一下；两次至少隔 40 毫秒（没到就留到下一帧，和后面来的合成一下）。
 // 旧写法 vibrate(true / false) 照旧能用：true = heavy，false = light。
 const VIBE_RANK = { light: 1, medium: 2, heavy: 3 };
+const VIBE_NAME = ['', 'light', 'medium', 'heavy'];
 const VIBE_GAP = 40;
+const WAVE_GAP = 80; // 波浪每下隔约 80 毫秒（规矩第三节第 3 条，Cc 11-25「嘣嘣嘣」）
 let vibeOn = true;
 let vibePending = 0;
 let vibeLast = -1e9;
-const vibeLog = []; // 测试打桩用：每次真震了记一笔 { t, type }
+let wavePend = null; // 这一帧里叫的波浪（好几串只留最重的一串）
+let waveCur = null; // 正在震的那串：{ lv: [3 档], i: 下一下是第几下, due: 什么时候能震 }
+const vibeLog = []; // 测试打桩用：每次真震了记一笔 { t, type, w }（w = 波浪第几下，单下 = -1）
 function vibrate(level) {
   const type = level === true ? 'heavy' : level === false || level === undefined ? 'light' : level;
   const k = VIBE_RANK[type] || 1;
   if (k > vibePending) vibePending = k;
 }
+// 成功的那一刻：三下，一下比一下轻。不叠串：新来的一串把还没震完的那串顶掉。
+const WAVES = {
+  small: ['medium', 'medium', 'light'], // 合成一件、叠阶、击杀
+  combo: ['heavy', 'medium', 'medium'], // 连着击杀、整条龙碎光
+  big: ['heavy', 'heavy', 'medium'], // 阿铸一锤、过关
+};
+const waveWeight = (lv) => lv.reduce((a, x) => a * 4 + (VIBE_RANK[x] || 1), 0);
+function vibrateWave(kind) {
+  const lv = WAVES[kind] || kind;
+  if (!wavePend || waveWeight(lv) > waveWeight(wavePend)) wavePend = lv;
+}
 function flushVibrate() {
-  if (!vibePending) return;
+  if (!vibeOn) { vibePending = 0; wavePend = null; waveCur = null; return; }
+  if (wavePend) { waveCur = { lv: wavePend, i: 0, due: 0 }; wavePend = null; }
   const t = Date.now();
-  if (t - vibeLast < VIBE_GAP) return;
-  const type = ['', 'light', 'medium', 'heavy'][vibePending];
+  let want = vibePending;
+  const waveDue = waveCur && t >= waveCur.due;
+  if (waveDue) want = Math.max(want, VIBE_RANK[waveCur.lv[waveCur.i]] || 1);
+  if (!want) return;
+  if (t - vibeLast < VIBE_GAP) return; // 没隔够：下一帧再来
+  const type = VIBE_NAME[want];
   vibePending = 0;
-  if (!vibeOn) return;
+  let w = -1;
+  if (waveDue) {
+    w = waveCur.i++;
+    waveCur.due = t + WAVE_GAP;
+    if (waveCur.i >= waveCur.lv.length) waveCur = null;
+  }
   vibeLast = t;
-  vibeLog.push({ t, type });
+  vibeLog.push({ t, type, w });
   if (vibeLog.length > 500) vibeLog.shift();
   try {
     if (isWx && wx.vibrateShort) wx.vibrateShort({ type, fail() {} });
@@ -107,6 +132,8 @@ function flushVibrate() {
 function setVibrate(on) {
   vibeOn = !!on;
   vibePending = 0;
+  wavePend = null;
+  waveCur = null;
 }
 
 // 激励视频。填了广告位 id 且在微信里才放真广告，返回 true；
@@ -229,4 +256,4 @@ function exposeForTest(name, value) {
   if (!isWx && typeof window !== 'undefined') window[name] = value;
 }
 
-module.exports = { isWx, setup, createOffscreen, loadImage, now, nextFrame, vibrate, flushVibrate, setVibrate, vibeOn: () => vibeOn, vibeLog, showRewardedAd, load, save, exposeForTest, sound, unlockAudio, setMuted };
+module.exports = { isWx, setup, createOffscreen, loadImage, now, nextFrame, vibrate, vibrateWave, flushVibrate, setVibrate, vibeOn: () => vibeOn, vibeLog, showRewardedAd, load, save, exposeForTest, sound, unlockAudio, setMuted };

@@ -1,5 +1,6 @@
 // 《墨守》震动打桩测试（照 00_震动手感规矩_1.0 第 6 条）：
 // 每个有效操作都震了、档位对；没成的点击不震；同一帧只震一下；两次之间都隔够 40 毫秒；开关关了就不震。
+// 1.1 补（Cc 11-25「嘣嘣嘣」）：成功正好震三下、一下比一下轻、每下隔约 80 毫秒；新一串顶掉旧一串；挨打 / 失败只重一下。
 const { chromium } = require('/Users/chuyuannc/Downloads/Cursor/Kira/06_游戏设计/node_modules/playwright');
 const path = require('path');
 (async () => {
@@ -28,12 +29,15 @@ const path = require('path');
     return P(b.x + b.w / 2, b.y + b.h / 2);
   };
   const log = () => g(() => __mo.vibeLog.map((v) => v.type));
+  const RK = { light: 1, medium: 2, heavy: 3 };
+  // 正好一串波浪：三下、一下比一下轻（不会变重）、和给的档位一样
+  const isWave = (v, want) => v.length === 3 && v.join() === want.join() && v.every((x, i) => i === 0 || RK[x] <= RK[v[i - 1]]);
   const clear = () => g(() => { __mo.vibeLog.length = 0; });
   // 做一件事，等两帧多，返回这期间震了什么
   const did = async (fn) => {
     await clear();
     await fn();
-    await W(120);
+    await W(320); // 波浪三下要 160 毫秒多，等它震完
     return log();
   };
   const tap = async (id) => page.mouse.click(...(await pos(id)));
@@ -75,7 +79,9 @@ const path = require('path');
   });
   await W(300);
   v = await did(() => tap('make_nu'));
-  check(v.join() === 'medium', '合成一件：中震（' + v.join() + '）');
+  check(isWave(v, ['medium', 'medium', 'light']), '合成一件：小波浪「嘣嘣嘣」中、中、轻（' + v.join() + '）');
+  const wg = await g(() => __mo.vibeLog.slice(-3).map((x) => x.t));
+  check(wg[1] - wg[0] >= 70 && wg[2] - wg[1] >= 70 && wg[2] - wg[1] <= 140, '波浪每下隔约 80 毫秒（' + (wg[1] - wg[0]) + '、' + (wg[2] - wg[1]) + '）');
   await W(400); // 等阿铸抡完锤
   const tr0 = await pos('tray0');
   v = await did(() => page.mouse.click(...tr0));
@@ -120,13 +126,21 @@ const path = require('path');
     await page.mouse.move(...spot, { steps: 6 });
     await page.mouse.up();
   });
-  check(v.indexOf('medium') >= 0 && (await g(() => __mo.G.r.slots[1].tier === 2)), '拖到同名机关上叠阶：中震（' + v.join() + '）');
+  check(v[0] === 'light' && isWave(v.slice(1), ['medium', 'medium', 'light']) && (await g(() => __mo.G.r.slots[1].tier === 2)), '拖到同名机关上叠阶：拿起轻一下 + 小波浪（' + v.join() + '）');
 
   // —— 锤 = 重 ——
   await g(() => { __mo.G.r.charge = 8; });
   await W(800);
   v = await did(() => tap('smash'));
-  check(v.indexOf('heavy') >= 0, '锤攒满点下去：重震（' + v.join() + '）');
+  check(isWave(v.slice(-3), ['heavy', 'heavy', 'medium']) && v.length <= 4, '阿铸一锤：大波浪重、重、中（' + v.join() + '）');
+
+  // —— 不叠串：一串还没震完又来一串，新的顶掉旧的 ——
+  v = await did(async () => {
+    await g(() => __mo.vibrateWave('small'));
+    await W(30);
+    await g(() => __mo.vibrateWave('combo'));
+  });
+  check(v.length <= 4 && isWave(v.slice(-3), ['heavy', 'medium', 'medium']), '一串没震完又来一串：旧的顶掉，最多 4 下（' + v.join() + '）');
 
   // —— 同一帧只震一下 ——
   await g(() => { __mo.G.r.bench.push({ id: 'teng', tier: 1 }, { id: 'han', tier: 1 }); });
@@ -169,7 +183,18 @@ const path = require('path');
   const kinds = [...new Set(all.map((x) => x.type))];
   check(all.length >= 5, '自动打完一关：一共震了 ' + all.length + ' 次，档位有 ' + kinds.join('、'));
   check(minGap >= 40, '任何两次震动之间都隔够 40 毫秒（最短 ' + minGap + ' 毫秒）');
-  check(all[all.length - 1].type === 'heavy', '结算那一下是重震');
+  // 每串波浪都不超过三下、一下比一下轻（被顶掉的可以没震完）
+  let seq = [], badWave = '';
+  for (const x of all) {
+    if (x.w === 0) seq = [x.type];
+    else if (x.w > 0) { if (x.w !== seq.length || RK[x.type] > RK[seq[seq.length - 1]]) badWave = seq.join() + ' → ' + x.type; seq.push(x.type); }
+    if (seq.length > 3) badWave = seq.join();
+  }
+  check(!badWave, '一路上每串波浪都不超过三下、一下比一下轻' + (badWave ? '：' + badWave : ''));
+  const won = await g(() => __mo.G.result.win);
+  const tail = all.slice(-3).map((x) => x.type);
+  if (won) check(isWave(tail, ['heavy', 'heavy', 'medium']), '过关：最后是大波浪重、重、中（' + tail.join() + '）');
+  else check(all[all.length - 1].type === 'heavy' && all[all.length - 1].w === -1, '失败：最后只重一下，不做波浪');
 
   check(errors.length === 0, '没有报错' + (errors.length ? '：' + errors.slice(0, 3).join(' | ') : ''));
   await browser.close();

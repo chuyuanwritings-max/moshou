@@ -305,7 +305,8 @@ function onTouch(type, id, px, py) {
           }
           if (res) {
             snd(res.res === 'merge' ? 'evolve' : 'clang', 0, 0.5);
-            PF.vibrate(res.res === 'merge' ? 'medium' : 'light');
+            if (res.res === 'merge') PF.vibrateWave('small'); // 叠阶 = 小波浪
+            else PF.vibrate('light');
             if (res.res === 'merge') {
               chargeUp();
               const p = G.r.lv.mode === 'defend' && G.scr === 'play' ? F.slotPos(to) : { x: FW / 2, y: G.scr === 'play' ? 540 : 120 };
@@ -329,7 +330,7 @@ function onTouch(type, id, px, py) {
             G.r.bench.splice(d.bi, 1);
             chargeUp();
             snd('evolve', 0, 0.5);
-            PF.vibrate('medium');
+            PF.vibrateWave('small'); // 手上叠阶
             pop('叠成 ' + b.tier + ' 阶！', FW / 2, G.scr === 'play' ? 600 : 560, '#ffd65a', 16);
           }
           G.sel = -1;
@@ -463,8 +464,7 @@ function press(id) {
       tutAdvance('combine');
       chargeUp();
       G.bagua = { t: 0, a0: G.baguaAng || 0, gold: lucky };
-      PF.vibrate(lucky ? 'heavy' : 'medium'); // 合成 = 中；大成功 = 重，隔 0.12 秒再重一下
-      if (lucky && typeof setTimeout === 'function') setTimeout(() => PF.vibrate('heavy'), 120);
+      PF.vibrateWave(lucky ? 'big' : 'small'); // 合成一件 = 小波浪；大成功 = 大波浪
       azSwing(() => {
         snd('clang', 0, 0.6);
         snd('upgrade', 0, 0.5);
@@ -517,7 +517,7 @@ function press(id) {
       if (res && res.blocked) pop('一夫当关：只能放 1 件', FW / 2, 560, '#ff8a5a', 15);
       else if (res && res.full) pop('已经满阶（最高 4 阶）', FW / 2, 300, '#ff9a6a', 15);
       else if (res) {
-        if (res.res === 'merge') PF.vibrate('medium');
+        if (res.res === 'merge') PF.vibrateWave('small');
         if (res.res === 'swap' && G.scr === 'play') {
           // 换下来的那件回到手上：再放出去也要装 3 秒（不然等于免费挪）
           const back = r.bench[r.bench.length - 1];
@@ -542,7 +542,7 @@ function press(id) {
       if (res && res.blocked) pop('一夫当关：只能放 1 件', FW / 2, 120, '#ff8a5a', 16);
       else if (res && res.full) pop('已经满阶（最高 4 阶）', FW / 2, 300, '#ff9a6a', 15);
       else if (res) {
-        if (res.res === 'merge') PF.vibrate('medium');
+        if (res.res === 'merge') PF.vibrateWave('small');
         snd(res.res === 'merge' ? 'evolve' : 'clang', 0, 0.5);
         if (res.res === 'merge') chargeUp();
         if (res.res === 'merge') pop('合成 ' + D.M[res.slot.id].name + ' ' + res.slot.tier + ' 阶！', FW / 2, 120, '#ffd65a', 18);
@@ -820,16 +820,16 @@ function handleEvents() {
         if (cb.n > cb.best) cb.best = cb.n;
         const rate = cb.n >= 3 ? 0.9 + Math.min(cb.n, 14) * 0.055 : 0.9 + Math.random() * 0.25;
         snd(e.boss || e.kind === 'gate' ? 'boom' : 'break', 35, 0.5, rate);
-        // 连碎只在开头震一下（中）；撞开城门 / 打碎铁头龙是重
-        if (e.boss || e.kind === 'gate') PF.vibrate('heavy');
-        else if (cb.n === 1) PF.vibrate('medium');
+        // 连碎只在开头来一串小波浪（一秒碎好几节，每节都震会腻）；撞开城门 / 打碎铁头龙 = 大波浪
+        if (e.boss || e.kind === 'gate') PF.vibrateWave('big');
+        else if (cb.n === 1) PF.vibrateWave('small');
         const bonus = { 10: 5, 20: 10, 30: 20 }[cb.n] || (cb.n > 30 && cb.n % 10 === 0 ? 20 : 0);
         if (bonus) {
           G.r.coins += bonus;
           pop('连碎 ×' + cb.n + '！ +' + bonus + ' 铜钱', FW / 2, 140, '#ffd65a', 18);
           G.shake = Math.max(G.shake, 6 + Math.min(cb.n, 40) / 5);
           snd('upgrade', 0, 0.5);
-          PF.vibrate('medium');
+          PF.vibrateWave('combo'); // 连碎 10 / 20 / 30 = 连击波浪
         }
         if (e.kind === 'tower') pop('拆了弩塔！', x, y - 30, '#ffb74a', 15);
         break;
@@ -849,7 +849,7 @@ function handleEvents() {
         pop('金库！+15', x, y - 30, '#ffd65a', 18);
         sparks(x, y, 16, '#ffd65a');
         snd('coin', 0, 0.7);
-        PF.vibrate('medium');
+        PF.vibrateWave('small');
         break;
       case 'log':
         G.shake = Math.max(G.shake, 10);
@@ -858,7 +858,7 @@ function handleEvents() {
         pop('城门滚木！推回去了', x, y - 30, '#ffd65a', 18);
         snd('thud', 0, 0.8);
         snd('ram', 0, 0.5);
-        PF.vibrate('heavy');
+        PF.vibrateWave('combo'); // 滚木推回去 = 成功，不是挨打
         break;
       case 'refund':
         orb(x, y, e.el);
@@ -876,7 +876,7 @@ function handleEvents() {
         pop('阿铸一锤！', x, y - 74, '#ffd65a', 24);
         snd('boom', 0, 0.8);
         snd('thud', 0, 0.7);
-        PF.vibrate('heavy');
+        PF.vibrateWave('big'); // 阿铸一锤 = 大波浪
         break;
       case 'dragonDown':
         // 整条龙碎光：慢一下 + 大字 + 奖励
@@ -887,7 +887,7 @@ function handleEvents() {
         sparks(x, y, 20, '#ffd65a');
         pop('整条龙碎了！ +' + e.bonus, x, y - 36, '#ffd65a', 20);
         snd('win', 0, 0.4);
-        PF.vibrate('medium');
+        PF.vibrateWave('combo'); // 整条龙碎光
         break;
       case 'boom':
       case 'kaboom':
@@ -960,7 +960,7 @@ function handleEvents() {
         G.flash = 0.3;
         G.flashCol = '#ffffff';
         snd('win', 0, 0.5);
-        PF.vibrate('medium');
+        PF.vibrateWave('small'); // 这一波打完
         G.waveClearAt = PF.now();
         break;
       case 'win':
@@ -974,7 +974,7 @@ function handleEvents() {
         break;
       case 'bossDown':
         pop('打倒铁头龙！', FW / 2, 280, '#ffd65a', 24);
-        PF.vibrate('heavy');
+        PF.vibrateWave('big');
         break;
     }
   }
@@ -991,7 +991,8 @@ function handleEvents() {
 function finish(win, left) {
   if (G.finished) return;
   G.finished = true;
-  PF.vibrate('heavy'); // 过关、失败都是重
+  if (win) PF.vibrateWave('big'); // 过关 = 大波浪
+  else PF.vibrate('heavy'); // 失败只重一下，不做波浪
   const lv = G.r.lv;
   const i = G.lvIdx;
   const first = win && !meta.cleared[lv.id];
@@ -2517,4 +2518,4 @@ function drawMeta() {
 }
 
 SH.register('mo', { onTouch, frame, enter: () => (last = PF.now()) });
-PF.exposeForTest('__mo', { G, meta, D, B, F, A, startLevel, press, saveMeta, scale, ox, oy, metaNow, vibeLog: PF.vibeLog });
+PF.exposeForTest('__mo', { G, meta, D, B, F, A, startLevel, press, saveMeta, scale, ox, oy, metaNow, vibeLog: PF.vibeLog, vibrateWave: PF.vibrateWave });
